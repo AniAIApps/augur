@@ -23,6 +23,7 @@ import { AugurSettings, DEFAULT_MAX_TOKENS_PER_RUN, effectiveTokens, loadPersona
 import { Item, loadCurrent, loadHistory, newSession, patchStored, persist, SessionState, setCurrent, deleteSession, deleteSessions, isDeleted, isInvestigation, setHistoryRetentionDays } from './history';
 import { acquireRunLock, RunLock } from './runLock';
 import { errorMessage } from '../agent/grafana';
+import { verifyEvidence } from '../agent/verify';
 
 export const RANGE_MS: Record<string, number> = { '15m': 9e5, '1h': 36e5, '3h': 108e5, '6h': 216e5, '12h': 432e5, '24h': 864e5, '2d': 1728e5, '7d': 6048e5 };
 
@@ -46,6 +47,8 @@ export interface StoreState {
   ready: boolean;
   /** Another browser tab currently holds the run lease for this session. */
   runningElsewhere: boolean;
+  /** Progress of an evidence verification in the open conversation. */
+  verifying?: { done: number; total: number };
   claudeDs: Array<{ uid: string; name: string; type: string; isDefault?: boolean }>;
   dsUid?: string;
   dsConfig?: ClaudeDsConfig;
@@ -1087,6 +1090,36 @@ class AugurStore {
     this.setNow({ history: loadHistory() });
   };
 
+  /**
+   * Re-runs every query in this conversation's evidence ledger exactly as recorded and reports, in
+   * the conversation, what is identical, changed or no longer available, and which findings and
+   * hypotheses rest on changed evidence.
+   */
+  verifyEvidence = async () => {
+    const s = this.state.session;
+    const ledger = s.evidence ?? [];
+    if (this.state.verifying) {
+      return;
+    }
+    if (!ledger.length) {
+      this.pushItem({ kind: 'notice', text: 'This conversation has no recorded queries to verify.' });
+      return;
+    }
+    this.setNow({ verifying: { done: 0, total: ledger.length } });
+    try {
+      const result = await verifyEvidence(grafanaHttp, ledger, {
+        findings: s.findings,
+        hypotheses: s.hypotheses,
+        onProgress: (done, total) => this.set({ verifying: { done, total } }),
+      });
+      this.updateSessionById(s.id, (x) => ({ ...x, verification: result, items: [...x.items, { kind: 'verification', result }] }), true);
+    } catch (e) {
+      this.pushItemTo(s.id, { kind: 'error', text: `Evidence verification failed: ${errorMessage(e)}` });
+    } finally {
+      this.setNow({ verifying: undefined });
+    }
+  };
+
   saveInvestigation = async (folderUid?: string) => {
     const s = this.state.session;
     const meta = investigationReportMeta(s);
@@ -1102,6 +1135,7 @@ class AugurStore {
         ledger: s.evidence ?? [],
         range: meta.range,
         user: config.bootData?.user?.login,
+        verification: s.verification,
       },
       listDataSources(),
       folderUid ?? this.state.settings.investigationFolderUid

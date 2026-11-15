@@ -14,6 +14,9 @@ Augur adds an AI observability engineer to self-hosted Grafana (OSS or Enterpris
 [Quick start :material-rocket-launch:](getting-started/quick-start.md){ .md-button .md-button--primary }
 [Install in your Grafana](getting-started/install.md){ .md-button }
 
+!!! tip "Coming in 1.9: verify evidence"
+    Re-run every query behind an investigation exactly as recorded and see whether its conclusions still rest on the same data. [More](guide/investigations.md#verifying-the-evidence)
+
 !!! tip "New in 1.8"
     - **Delete history:** remove all your conversations, or only chats or only investigations, from the conversations list. [More](guide/conversations.md#deleting-your-history)
     - **Scrolling pane:** the conversation scrolls on its own with the message box always in view, plus **Jump to latest**. [More](guide/chat.md#scrolling)

@@ -5,6 +5,9 @@ import { from, of, throwError } from 'rxjs';
 
 const NOW = Date.parse('2026-11-09T12:00:00Z');
 const posted: Array<{ url: string; data: any; headers?: any }> = [];
+// Changes the data /api/ds/query returns (to simulate late-arriving samples).
+let dsShift = 0;
+let failDsQuery = false;
 let modelScript: any[] = [];
 let appSettings: any = {};
 let dashboardJson: any;
@@ -54,13 +57,16 @@ const route = (opts: { url: string; method: string; data?: any; params?: any; he
     return { jsonData: appSettings };
   }
   if (url === '/api/ds/query') {
+    if (failDsQuery) {
+      return { results: { A: { error: 'parse error: unknown metric' } } };
+    }
     return {
       results: {
         A: {
           frames: [
             {
               schema: { fields: [{ name: 'Time', type: 'time' }, { name: 'Value', type: 'number', labels: { service: 'checkout' } }] },
-              data: { values: [[NOW - 60000, NOW], [0.01, 0.2]] },
+              data: { values: [[NOW - 60000, NOW], [0.01, 0.2 + dsShift]] },
             },
           ],
         },
@@ -545,6 +551,67 @@ describe('deleting a running conversation', () => {
     await settle();
     expect(storedIds()).not.toContain('sub-agent incident');
     expect(modelCalls()).toHaveLength(2); // the lead agent did not continue
+  });
+});
+
+describe('evidence verification', () => {
+  const investigate = async () => {
+    modelScript = [
+      { stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 'a', name: 'query_prometheus', input: { datasource_uid: 'mimir', expr: 'sum by (service) (rate(errors[5m]))' } }] },
+      {
+        stop_reason: 'tool_use',
+        content: [
+          { type: 'tool_use', id: 'c', name: 'record_finding', input: { title: 'Errors rose after deploy', detail: '1% → 20%', severity: 'high', evidence: 'E1' } },
+          { type: 'tool_use', id: 'h', name: 'update_hypothesis', input: { key: 'deploy', statement: 'Deploy caused errors', status: 'confirmed', confidence: 0.9, challenged: true, evidence: 'E1' } },
+        ],
+      },
+      { content: [{ type: 'text', text: '## Summary\nThe deploy caused it.' }] },
+    ];
+    renderPage('/a/augur-assistant-app?mode=investigate');
+    await screen.findByText(/Describe the symptom to investigate/);
+    await ask('checkout errors spiked', /Investigate$/);
+    await screen.findByText('The deploy caused it.');
+  };
+  afterEach(() => (dsShift = 0));
+
+  test('re-runs the evidence: identical data passes, changed data flags the findings and hypotheses that cite it', async () => {
+    await investigate();
+    fireEvent.click(screen.getByRole('button', { name: /Verify evidence/ }));
+    const ok = await screen.findByTestId('augur-verification');
+    expect(ok).toHaveTextContent('1 identical');
+    expect(ok).toHaveTextContent('returned the same data');
+    // The replay uses the recorded range exactly.
+    const replays = posted.filter((p) => p.url === '/api/ds/query');
+    expect(replays[replays.length - 1].data).toEqual(replays[0].data);
+
+    dsShift = 0.5; // late samples arrived for that window
+    fireEvent.click(screen.getByRole('button', { name: /Verify evidence/ }));
+    await waitFor(() => expect(screen.getAllByTestId('augur-verification')).toHaveLength(2));
+    const changed = screen.getAllByTestId('augur-verification')[1];
+    expect(changed).toHaveTextContent('1 changed');
+    expect(changed).toHaveTextContent('Finding: Errors rose after deploy');
+    expect(changed).toHaveTextContent('Hypothesis: Deploy caused errors');
+
+    // The latest verification goes into the PDF report and the saved investigation.
+    fireEvent.click(screen.getByRole('button', { name: /PDF/ }));
+    const frame = document.querySelector('iframe[title="Report print preview"]') as HTMLIFrameElement;
+    expect(frame.srcdoc).toContain('Evidence verification');
+    expect(frame.srcdoc).toContain('vr-changed');
+    frame.remove();
+    fireEvent.click(screen.getByRole('button', { name: /Save to Grafana/ }));
+    await waitFor(() => expect(posted.some((p) => p.url === '/api/dashboards/db' && JSON.stringify(p.data).includes('augur-ledger:v1'))).toBe(true));
+    const saved = posted.find((p) => p.url === '/api/dashboards/db' && JSON.stringify(p.data).includes('augur-ledger:v1'))!;
+    expect(JSON.stringify(saved.data)).toContain('### Evidence verification');
+  });
+
+  test('a query that no longer works is reported as unavailable', async () => {
+    await investigate();
+    failDsQuery = true;
+    fireEvent.click(screen.getByRole('button', { name: /Verify evidence/ }));
+    const card = await screen.findByTestId('augur-verification');
+    expect(card).toHaveTextContent('1 unavailable');
+    expect(card).toHaveTextContent('Finding: Errors rose after deploy');
+    failDsQuery = false;
   });
 });
 

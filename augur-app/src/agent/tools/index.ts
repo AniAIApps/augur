@@ -6,7 +6,7 @@ import { observabilityTools } from './observability';
 import { grafanaObjectTools, recordFinding } from './grafanaObjects';
 import { draftDashboardTool, listFolders, reviseDraftTool } from './dashboards';
 import { actionTools, listSilences, queryProfiles } from './actions';
-import { memoryTool, readPastInvestigation, searchPastInvestigations, skillTools } from './knowledge';
+import { memoryTool, readPastInvestigation, searchPastInvestigations, skillTools, verifyPastInvestigation } from './knowledge';
 import { delegateTool, DelegateDeps, hypothesisTool } from './investigation';
 
 export interface ToolsetDeps {
@@ -37,6 +37,7 @@ export function readOnlyTools(deps: Partial<ToolsetDeps>): ToolDefinition[] {
     ...memoryTool(deps.memory),
     searchPastInvestigations,
     readPastInvestigation,
+    verifyPastInvestigation,
     ...(deps.capabilities ? [capabilitiesTool(deps.capabilities)] : []),
     ...(deps.mcp ?? []).filter((t) => t.readOnly === true),
   ];

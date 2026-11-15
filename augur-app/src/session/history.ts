@@ -1,5 +1,6 @@
 // Conversation history, kept per browser (localStorage). Saved investigations live in Grafana itself.
 
+import type { VerificationResult } from '../agent/verify';
 import { AgentMode, EvidenceRecord, Finding, Hypothesis, Message } from '../agent/types';
 import { Proposal } from '../agent/proposals';
 import { PLUGIN_ID } from '../constants';
@@ -20,7 +21,8 @@ export type Item =
   | { kind: 'proposal'; id: string }
   | { kind: 'approval'; id: string; title: string; detail: string; state: 'pending' | 'approved' | 'denied' }
   | { kind: 'error'; text: string }
-  | { kind: 'notice'; text: string; url?: string };
+  | { kind: 'notice'; text: string; url?: string }
+  | { kind: 'verification'; result: VerificationResult };
 
 export interface SessionState {
   id: string;
@@ -41,6 +43,8 @@ export interface SessionState {
   pinned?: boolean;
   /** Token usage of this conversation (all runs). */
   usage?: { input_tokens: number; output_tokens: number; cache_read_input_tokens: number; cache_creation_input_tokens: number };
+  /** The latest evidence verification of this conversation's ledger. */
+  verification?: VerificationResult;
   /** The latest investigation in this conversation: what was asked, when, and over which window. */
   investigation?: InvestigationMeta;
   /** Present while an agent run is in progress or was interrupted (page reload, crash). */

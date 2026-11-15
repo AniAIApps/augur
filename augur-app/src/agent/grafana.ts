@@ -3,6 +3,7 @@
 import { DataSourceInfo, ToolContext } from './types';
 import { DsQueryResponse } from './frames';
 import { iso } from './time';
+import { dataDigest } from './verify';
 
 /** SHA-256 hex digest via WebCrypto, with an explicit non-cryptographic fallback. */
 export async function digest(text: string): Promise<string> {
@@ -69,6 +70,7 @@ export async function dsQuery(
       from: iso(range.from),
       to: iso(range.to),
       digest: await digest(JSON.stringify(resp ?? null)),
+      dataDigest: await dataDigest(resp),
       frames: frames.length,
       rows: frames.reduce((n, f) => n + ((f.data?.values?.[0] as unknown[] | undefined)?.length ?? 0), 0),
       at: ctx.now(),

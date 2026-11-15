@@ -104,6 +104,8 @@ export interface EvidenceRecord {
   from: string; // absolute ISO time range actually queried
   to: string;
   digest: string; // "sha256:<hex>" of the raw response (or "fnv1a:" where WebCrypto is unavailable)
+  /** Digest of the data alone (frames, fields, labels, values), used to verify the evidence later. */
+  dataDigest?: string;
   frames: number;
   rows: number;
   at: number;

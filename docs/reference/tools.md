@@ -10,7 +10,7 @@ The tools the model can call. Tools that only read run freely within your permis
 | Traces | `tempo_tag_values`, `search_traces`, `get_trace` |
 | Profiles | `query_profiles` (Pyroscope: hottest functions by self and total time) |
 | Grafana | `run_panel_queries`, `list_alerts`, `alert_state_history`, `get_annotations`, `list_silences` |
-| Knowledge | `search_skills`, `read_skill`, `search_past_investigations`, `read_past_investigation` |
+| Knowledge | `search_skills`, `read_skill`, `search_past_investigations`, `read_past_investigation`, `verify_past_investigation` (re-runs a saved investigation's evidence) |
 | Investigation | `delegate` (parallel sub-agents), `update_hypothesis`, `record_finding` |
 | Proposals (you apply) | `draft_dashboard`, `revise_draft`, `propose_dashboard_edit`, `draft_silence`, `draft_alert_rule` |
 | MCP | `mcp__<server>__<tool>` for each allowed tool of your [MCP servers](../configure/mcp.md) |

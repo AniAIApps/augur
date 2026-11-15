@@ -3,6 +3,7 @@
 
 import { DataSourceInfo, EvidenceRecord, Finding, GrafanaHttp, Hypothesis } from './types';
 import { iso } from './time';
+import { VerificationResult, verificationMarkdown } from './verify';
 
 export const INVESTIGATION_TAG = 'augur-investigation';
 
@@ -24,6 +25,53 @@ export interface InvestigationRecord {
   range: { from: number; to: number };
   user?: string;
   tags?: string[];
+  /** The latest evidence verification, if one was run before saving. */
+  verification?: VerificationResult;
+}
+
+// The structured ledger is embedded in the saved dashboard (as an HTML comment in the ledger panel,
+// which survives dashboard schema conversions) so the investigation can be verified later.
+const LEDGER_MARK = 'augur-ledger:v1';
+const LEDGER_RE = /\n*<!-- augur-ledger:v1 ([A-Za-z0-9+/=]+) -->/;
+
+export interface EmbeddedLedger {
+  ledger: EvidenceRecord[];
+  findings: Finding[];
+  hypotheses: Hypothesis[];
+}
+
+const toBase64 = (text: string) => {
+  const bytes = new TextEncoder().encode(text);
+  let bin = '';
+  bytes.forEach((b) => (bin += String.fromCharCode(b)));
+  return btoa(bin);
+};
+const fromBase64 = (b64: string) => new TextDecoder().decode(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)));
+
+export function embedLedger(content: string, data: EmbeddedLedger): string {
+  return `${content}\n\n<!-- ${LEDGER_MARK} ${toBase64(JSON.stringify(data))} -->`;
+}
+
+/** The structured ledger of a saved investigation dashboard, if it has one (saved by Augur 1.9+). */
+export function extractLedger(dashboard: any): EmbeddedLedger | undefined {
+  const panels: any[] = [...(dashboard?.panels ?? []), ...(dashboard?.panels ?? []).flatMap((p: any) => p.panels ?? [])];
+  for (const p of panels) {
+    const m = LEDGER_RE.exec(p?.options?.content ?? '');
+    if (m) {
+      try {
+        const data = JSON.parse(fromBase64(m[1]));
+        return { ledger: data.ledger ?? [], findings: data.findings ?? [], hypotheses: data.hypotheses ?? [] };
+      } catch {
+        return undefined;
+      }
+    }
+  }
+  return undefined;
+}
+
+/** Panel text without the embedded ledger (what people and the model should read). */
+export function withoutEmbeddedLedger(content: string): string {
+  return content.replace(LEDGER_RE, '');
 }
 
 function uid() {
@@ -116,7 +164,19 @@ export function buildInvestigationDashboard(rec: InvestigationRecord, datasource
     { id: 1, type: 'text', title: 'Report', gridPos: { x: 0, y: 0, w: 24, h: 18 }, options: { mode: 'markdown', content: `${header}\n\n${rec.report}` } },
     { id: 2, type: 'text', title: 'Findings', gridPos: { x: 0, y: 18, w: 12, h: 10 }, options: { mode: 'markdown', content: findingsMd } },
     { id: 3, type: 'text', title: 'Hypotheses', gridPos: { x: 12, y: 18, w: 12, h: 10 }, options: { mode: 'markdown', content: hypMd } },
-    { id: 5, type: 'text', title: 'Evidence ledger (exact queries, ranges and result digests)', gridPos: { x: 0, y: 28, w: 24, h: 10 }, options: { mode: 'markdown', content: ledgerMarkdown(rec.ledger) } },
+    {
+      id: 5,
+      type: 'text',
+      title: 'Evidence ledger (exact queries, ranges and result digests)',
+      gridPos: { x: 0, y: 28, w: 24, h: 10 },
+      options: {
+        mode: 'markdown',
+        content: embedLedger(
+          `${ledgerMarkdown(rec.ledger)}${rec.verification ? `\n\n### Evidence verification\n\n${verificationMarkdown(rec.verification, iso)}` : ''}`,
+          { ledger: rec.ledger ?? [], findings: rec.findings, hypotheses: rec.hypotheses }
+        ),
+      },
+    },
     { id: 4, type: 'row', title: 'Evidence', collapsed: false, gridPos: { x: 0, y: 38, w: 24, h: 1 }, panels: [] },
     ...evidencePanels(rec.evidence, datasources, 39),
   ];

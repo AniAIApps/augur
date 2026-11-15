@@ -1,6 +1,15 @@
-import { configFromEnv, runHeadless } from './run';
+import { configFromEnv, runHeadless, verifyLedgerFile } from './run';
 
 async function main() {
+  const args = process.argv.slice(2);
+  if (args[0] === '--verify') {
+    if (!args[1]) {
+      throw new Error('usage: augur-headless --verify <ledger.json>');
+    }
+    const v = await verifyLedgerFile(process.env, args[1]);
+    process.stdout.write(`${v.text}\n`);
+    return v.code;
+  }
   const cfg = configFromEnv(process.env, process.argv.slice(2));
   const r = await runHeadless(cfg);
   process.stdout.write(`${r.answer}\n`);

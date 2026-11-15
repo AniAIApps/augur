@@ -40,7 +40,7 @@ Grafana Assistant is Grafana Labs' commercial agent. Since April 2026 OSS and En
 
 | Capability on self-managed Grafana | Grafana Assistant (on-prem) | Augur |
 |---|---|---|
-| Requires | Grafana 13.1+ and a Grafana Cloud stack | Grafana 12.0+ and a Claude-compatible model endpoint |
+| Requires | Grafana 13.1+ and a Grafana Cloud stack | Grafana 12.0+ and a model endpoint (Claude Messages or OpenAI-compatible) |
 | Chat, query writing and explanation, navigation | ✓ | ✓ (with Explore/dashboard/alert links) |
 | Create dashboards | ✓ | ✓ (queries dry-run before you see the draft) |
 | Edit existing dashboards | ✓ | ✓ (change list, version-guarded apply, rollback via version history) |
@@ -48,6 +48,7 @@ Grafana Assistant is Grafana Labs' commercial agent. Since April 2026 OSS and En
 | MCP server integrations | ✓ | ✓ (proxied server-side; approval for non-read-only tools) |
 | Investigations | ✗ (Cloud only) | ✓ (sub-agents, hypothesis board, challenge step, saved reports) |
 | Infrastructure / knowledge memory | ✗ (Cloud only) | ✓ (scan of metrics/logs/traces + Tempo service graph) |
+| Evidence ledger and re-verification | not documented | ✓ every query recorded with its exact range and a data digest; **Verify evidence** re-runs them later and flags findings resting on changed or vanished data |
 | Alerting actions | silences and routing (per Grafana Cloud guides) | draft silences (with live match preview) and alert rules |
 | Profiles (Pyroscope) | not listed for self-managed | ✓ |
 | Automations / scheduled runs, Slack | ✗ (Cloud only) | not yet (roadmap) |
@@ -307,7 +308,8 @@ apps:
 - The model cannot write anything itself. Dashboard, silence and alert changes are proposals that the user applies. Dashboard edits use Grafana's optimistic version check, so a concurrent change is never overwritten, and every save is restorable from version history.
 - MCP authorization is enforced in the backend: only allow-listed tools that the server currently lists (checked against a list at most a minute old) can be called, a tool the server redefined since it was listed is refused (definition fingerprints), responses must be valid JSON-RPC for the request, and only tools the **admin** marks read-only (`readOnlyTools`; servers' own `readOnlyHint` is ignored unless `trustReadOnlyHints` is set) skip the role check. Everything else requires the `writeRole` (default Editor) **and** an **Allow once** click in the UI. Sub-agents only get read-only tools.
 - The backend never follows HTTP redirects, so credentials cannot be bounced to another host.
-- Every data query is recorded in an **evidence ledger** (datasource, query, absolute time range, SHA-256 digest of the response, frame/row counts). Findings cite evidence ids (`E3`), and the ledger is saved with investigations and reports.
+- Every data query is recorded in an **evidence ledger** (datasource, query, absolute time range, SHA-256 digests of the response and of the data alone, frame/row counts). Findings cite evidence ids (`E3`), and the ledger is saved with investigations and reports.
+- **Verify evidence** re-runs every query behind an investigation exactly as recorded and reports which evidence is identical, changed (late-arriving or backfilled data) or no longer available (retention, a removed datasource, permissions), and which findings and hypotheses cite changed evidence. Saved investigations can be verified later (`verify_past_investigation`), and the headless runner can verify a ledger file in CI (`--verify`, exit code 3 if anything changed).
 - A per-run token ceiling (default 1.5M, configurable) stops runaway loops; the run then answers from what it has. **Backend usage limits** (concurrency, rate, daily token budgets per user and per datasource) hold even for clients that bypass the app.
 - Updating a dashboard saved from an earlier draft uses Grafana's version check, so changes made in Grafana since are never overwritten.
 - Tool output (logs, traces, dashboards, annotations, runbooks, MCP results and tool descriptions, sub-agent briefs) is treated as untrusted data, never as instructions. This is a mitigation, not a guarantee; the structural controls above are what limit the impact of prompt injection.

@@ -40,6 +40,10 @@ It's generated in your browser from the conversation: no server, no external ser
 
 Reports use the question that started the investigation (a conversation can hold several) and the window the agent was given, widened to cover every query in the evidence ledger, so a report never claims less than was examined.
 
+## Evidence verification
+
+If you ran **Verify evidence** ([how](investigations.md#verifying-the-evidence)), reports and saved investigations include the latest result: when it ran, how many queries were identical, changed or unavailable, details for each one that wasn't identical, and the findings and hypotheses to re-examine.
+
 ## The evidence ledger
 
-Each entry records exactly which data a conclusion was based on: datasource, query, absolute time range, a SHA-256 digest of the response, and frame and row counts. Findings cite entries by id (`E3`). To recheck a finding later, rerun the query over the same range and compare.
+Each entry records exactly which data a conclusion was based on: datasource, query, absolute time range, SHA-256 digests of the response and of the data alone, and frame and row counts. Findings cite entries by id (`E3`). **Verify evidence** re-runs them all and compares.

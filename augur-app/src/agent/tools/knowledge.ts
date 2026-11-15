@@ -4,7 +4,9 @@ import { ToolDefinition } from '../types';
 import { InfraMemory, Skill } from '../../settings';
 import { clip } from '../frames';
 import { flattenPanels } from './grafanaObjects';
-import { INVESTIGATION_TAG } from '../investigations';
+import { extractLedger, INVESTIGATION_TAG, withoutEmbeddedLedger } from '../investigations';
+import { verificationMarkdown, verifyEvidence } from '../verify';
+import { iso } from '../time';
 
 function score(text: string, terms: string[]): number {
   const t = text.toLowerCase();
@@ -121,8 +123,30 @@ export const readPastInvestigation: ToolDefinition = {
     const r = await ctx.http.get<{ dashboard: any }>(`/api/dashboards/uid/${encodeURIComponent(input.uid)}`, undefined, ctx.signal);
     const texts = flattenPanels(r.dashboard)
       .filter((p: any) => p.type === 'text')
-      .map((p: any) => p.options?.content ?? '')
+      .map((p: any) => withoutEmbeddedLedger(p.options?.content ?? ''))
       .join('\n\n');
     return clip(`${r.dashboard.title}\n\n${texts || '(no report text)'}`, 12_000);
+  },
+};
+
+export const verifyPastInvestigation: ToolDefinition = {
+  schema: {
+    name: 'verify_past_investigation',
+    description:
+      'Re-run every query behind a saved investigation exactly as recorded (same datasource, query and absolute time range) and report which evidence is identical, changed (e.g. late or backfilled data) or no longer available (retention, deleted datasource, permissions), plus the findings and hypotheses that cite changed evidence. Use when someone relies on, revisits or disputes a past investigation. Read-only.',
+    input_schema: { type: 'object', properties: { uid: { type: 'string', description: 'Dashboard uid from search_past_investigations' } }, required: ['uid'] },
+  },
+  describe: (i) => `Verify the evidence of investigation ${i.uid}`,
+  run: async (input, ctx) => {
+    const r = await ctx.http.get<{ dashboard: any }>(`/api/dashboards/uid/${encodeURIComponent(input.uid)}`, undefined, ctx.signal);
+    const data = extractLedger(r.dashboard);
+    if (!data) {
+      return `"${r.dashboard?.title ?? input.uid}" has no structured evidence ledger (it was saved before Augur 1.9, or isn't an Augur investigation), so it can't be verified. Its report can still be read with read_past_investigation.`;
+    }
+    if (!data.ledger.length) {
+      return `"${r.dashboard.title}" recorded no data queries, so there is nothing to verify.`;
+    }
+    const result = await verifyEvidence(ctx.http, data.ledger, { signal: ctx.signal, findings: data.findings, hypotheses: data.hypotheses, now: ctx.now });
+    return clip(`Evidence verification for "${r.dashboard.title}" (${data.ledger.length} queries):\n\n${verificationMarkdown(result, iso)}`, 12_000);
   },
 };

@@ -37,6 +37,7 @@ const env = {
   AUGUR_APPLY: 'auto',
   AUGUR_TRAJECTORY: join(dir, 'trajectory.json'),
   AUGUR_ANSWER: join(dir, 'answer.txt'),
+  AUGUR_EVIDENCE: join(dir, 'evidence.json'),
 };
 const t0 = Date.now();
 const r = spawnSync(process.execPath, [runner, 'Give me an overview of service health and build a dashboard for it.'], { env, encoding: 'utf8', timeout: 180_000 });
@@ -65,6 +66,23 @@ check(/[0-9a-f]{16,32}/.test(out('search_traces')), 'Tempo search returned trace
 const applied = traj.final_metrics.extra.applied ?? [];
 check(applied.length === 1 && !applied[0].error, `dashboard proposal applied (${JSON.stringify(applied)})`);
 check(traj.final_metrics.extra.evidence >= 3, `evidence ledger has ≥3 entries (${traj.final_metrics.extra.evidence})`);
+
+// Evidence verification against real Prometheus, Loki and Tempo: replaying the ledger (same
+// datasource, query, absolute range) must reproduce the same data digests.
+{
+  const ledger = JSON.parse(readFileSync(env.AUGUR_EVIDENCE, 'utf8')).ledger;
+  check(ledger.length >= 3 && ledger.every((e) => /^sha256:/.test(e.dataDigest ?? '')), `ledger written with data digests (${ledger.length} entries)`);
+  const verification = join(dir, 'verification.json');
+  const v = spawnSync(process.execPath, [runner, '--verify', env.AUGUR_EVIDENCE], { env: { ...env, AUGUR_VERIFICATION: verification }, encoding: 'utf8', timeout: 120_000 });
+  const res = v.status === 0 || v.status === 3 ? JSON.parse(readFileSync(verification, 'utf8')) : undefined;
+  const types = [...new Set(ledger.map((e) => e.datasource.type))].join(', ');
+  check(
+    v.status === 0 && res?.counts.identical === ledger.length,
+    `evidence verification reproduces every query (${types}): ${res ? JSON.stringify(res.counts) : `exit ${v.status}: ${(v.stderr || v.stdout).slice(0, 300)}`}${
+      res && res.counts.identical !== ledger.length ? ` ${JSON.stringify(res.checks.filter((c) => c.status !== 'identical')).slice(0, 600)}` : ''
+    }`
+  );
+}
 
 // The dashboard must exist in Grafana with working queries.
 const search = await fetch(`${grafana}/api/search?tag=augur-e2e`, { headers: auth ? { Authorization: auth } : {} }).then((x) => x.json());

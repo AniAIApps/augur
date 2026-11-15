@@ -39,6 +39,7 @@ export function useAugurSession(opts: SessionOptions) {
     remove: store.remove,
     clearHistory: store.clearHistory,
     retry: store.retry,
+    verifyEvidence: store.verifyEvidence,
     rename: store.rename,
     togglePin: store.togglePin,
     resolveApproval: store.resolveApproval,

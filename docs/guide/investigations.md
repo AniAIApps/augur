@@ -43,6 +43,23 @@ sequenceDiagram
 - Similar past investigations
 - [Installed apps and plugins](../reference/tools.md#knowing-your-grafana)
 
+## Verifying the evidence
+
+**Verify evidence** (in the footer once an investigation has answered) re-runs every query in the evidence ledger exactly as recorded, using the same datasource, query and absolute time range, and compares the data with what the conclusions were based on:
+
+| Result | Meaning |
+|---|---|
+| **identical** | The same data came back |
+| **changed** | The data for that window is different now: late-arriving samples, a backfill, recording rules catching up, or a relabelling |
+| **unavailable** | The query can't run any more: retention expired, the datasource was removed or renamed, or you lack permission |
+| **inconclusive** | Recorded before Augur 1.9 (no data digest) and only metadata differs; frame and row counts match |
+
+Findings and hypotheses that cite changed or unavailable evidence (`E#`) are listed under **Re-examine**. The comparison uses a digest of the data alone (frames, fields, labels, values), so query statistics and series order don't matter.
+
+Verify before you rely on an investigation, for example when writing a postmortem a few days later or when a conclusion is disputed. The latest verification goes into Markdown and PDF reports and into the investigation when you save it.
+
+Saved investigations embed their full ledger, so they can be verified later too: ask *"verify the evidence of last week's checkout investigation"*. Augur also verifies a past investigation before leaning on its conclusion.
+
 ## Finishing
 
 - **Save to Grafana** creates a dashboard with the report, findings, hypotheses, evidence panels and annotations, in the investigations folder (your folder permissions apply). Saved investigations are searchable in future ones.

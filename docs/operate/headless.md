@@ -47,8 +47,21 @@ cd augur-app && npm ci && npm run build:headless
 | `AUGUR_TRAJECTORY` | Write the run as an [ATIF](https://github.com/laude-institute/harbor) trajectory: tool calls, results, evidence, token usage |
 | `AUGUR_ANSWER` | Write the final answer to this file |
 | `AUGUR_NOW` | Fixed "current time" (ISO) for reproducible runs |
+| `AUGUR_EVIDENCE` | Write the run's evidence ledger (with findings and hypotheses) to this file, for `--verify` |
 
 The final answer is printed to stdout. Exit codes: `0` finished, `1` the run ended with an error, `2` configuration or connection failure (message on stderr).
+
+## Verifying evidence
+
+Re-run a ledger written with `AUGUR_EVIDENCE`, exactly as recorded, against Grafana:
+
+```bash
+GRAFANA_URL=https://grafana.example.com GRAFANA_TOKEN=glsa_... \
+AUGUR_VERIFICATION=verification.json \
+node dist-headless/augur-headless.mjs --verify evidence.json
+```
+
+It prints a summary (identical, changed, unavailable; findings and hypotheses to re-examine), writes the full result to `AUGUR_VERIFICATION` if set, and exits `0` if nothing changed or `3` if any evidence changed or is no longer available. Useful in CI for runbooks and reports whose conclusions should keep holding.
 
 ## Applying proposals unattended
 

@@ -22,6 +22,7 @@ import {
 import { AgentMode } from '../agent/types';
 import { AugurSession } from '../session/useAugurSession';
 import { investigationReportMeta } from '../session/store';
+import type { VerificationResult, VerifyStatus } from '../agent/verify';
 import { Item } from '../session/history';
 import { buildReport, download, printHtml, ReportInput, reportHtml } from '../report';
 import { loadPersonalRules, newId, savePersonalRules } from '../settings';
@@ -210,6 +211,7 @@ export function ChatView({ s, variant, autoStart }: ChatViewProps) {
         .filter((x): x is Extract<Item, { kind: 'tool' }> => x.kind === 'tool')
         .map((x) => ({ label: x.label, ok: x.status === 'ok' })),
       ledger: session.evidence,
+      verification: session.verification,
       user: config.bootData?.user?.login,
       generatedAt: Date.now(),
     };
@@ -473,6 +475,18 @@ export function ChatView({ s, variant, autoStart }: ChatViewProps) {
                       {saving ? 'Saving…' : 'Save to Grafana'}
                     </Button>
                   )}
+                  {(session.evidence?.length ?? 0) > 0 && (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      icon="check-circle"
+                      onClick={s.verifyEvidence}
+                      disabled={!!s.verifying}
+                      tooltip="Re-run every query behind this investigation exactly as recorded and check the data is unchanged"
+                    >
+                      {s.verifying ? `Verifying ${s.verifying.done}/${s.verifying.total}…` : 'Verify evidence'}
+                    </Button>
+                  )}
                   <Button
                     size="sm"
                     variant="secondary"
@@ -621,6 +635,8 @@ function TimelineItem({ it, index, s, latestDraft }: { it: Item; index: number; 
           {it.text}
         </Alert>
       );
+    case 'verification':
+      return <VerificationCard result={it.result} />;
     case 'notice':
       return (
         <div className={st.notice}>
@@ -636,6 +652,84 @@ function TimelineItem({ it, index, s, latestDraft }: { it: Item; index: number; 
         </div>
       );
   }
+}
+
+const VERIFY_LABEL: Record<VerifyStatus, { text: string; color: 'green' | 'orange' | 'red' | 'blue' }> = {
+  identical: { text: 'identical', color: 'green' },
+  changed: { text: 'changed', color: 'orange' },
+  unavailable: { text: 'unavailable', color: 'red' },
+  inconclusive: { text: 'inconclusive', color: 'blue' },
+};
+
+/** Result of re-running an investigation's evidence: what still holds and what to re-examine. */
+function VerificationCard({ result }: { result: VerificationResult }) {
+  const st = useStyles2(getStyles);
+  const notable = result.checks.filter((c) => c.status !== 'identical');
+  const clean = !notable.length;
+  return (
+    <div className={cx(st.verify, clean ? st.verifyOk : st.verifyWarn)} data-testid="augur-verification">
+      <div className={st.verifyHead}>
+        <Icon name={clean ? 'check-circle' : 'exclamation-triangle'} />
+        <b>Evidence verification</b>
+        <span className={st.muted}>{new Date(result.at).toLocaleString()}</span>
+      </div>
+      <div className={st.verifyCounts}>
+        {(Object.keys(VERIFY_LABEL) as VerifyStatus[])
+          .filter((k) => result.counts[k])
+          .map((k) => (
+            <Badge key={k} color={VERIFY_LABEL[k].color} text={`${result.counts[k]} ${VERIFY_LABEL[k].text}`} />
+          ))}
+      </div>
+      <div className={st.muted}>
+        {clean
+          ? 'Every query behind this investigation was re-run with its recorded datasource, query and time range, and returned the same data.'
+          : 'Each query was re-run with its recorded datasource, query and time range. Changed data usually means late-arriving or backfilled samples; unavailable usually means retention, a removed datasource or permissions.'}
+      </div>
+      {notable.length > 0 && (
+        <table className={st.verifyTable}>
+          <thead>
+            <tr>
+              <th>Evidence</th>
+              <th>Result</th>
+              <th>Query</th>
+              <th>Recorded → now</th>
+            </tr>
+          </thead>
+          <tbody>
+            {notable.map((c) => (
+              <tr key={c.id}>
+                <td>{c.id}</td>
+                <td>
+                  <Badge color={VERIFY_LABEL[c.status].color} text={c.status} />
+                </td>
+                <td>
+                  <code>{c.query.slice(0, 160)}</code>
+                  <div className={st.muted}>{c.datasource}</div>
+                </td>
+                <td>
+                  {c.before.frames} frames, {c.before.rows} rows → {c.after ? `${c.after.frames} frames, ${c.after.rows} rows` : '–'}
+                  {c.note && <div className={st.muted}>{c.note}</div>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {(result.affected.findings.length > 0 || result.affected.hypotheses.length > 0) && (
+        <div>
+          <b>Re-examine</b> (cites evidence that changed or is unavailable):
+          <ul className={st.verifyList}>
+            {result.affected.findings.map((t) => (
+              <li key={`f-${t}`}>Finding: {t}</li>
+            ))}
+            {result.affected.hypotheses.map((t) => (
+              <li key={`h-${t}`}>Hypothesis: {t}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
 }
 
 /** Follow new output while within this distance of the bottom; show "Jump to latest" beyond it. */
@@ -702,6 +796,27 @@ const getStyles = (t: GrafanaTheme2) => ({
   }),
   emptyTitle: css({ fontSize: t.typography.h4.fontSize }),
   starters: css({ display: 'flex', flexWrap: 'wrap', gap: t.spacing(1), justifyContent: 'center' }),
+  verify: css({
+    border: `1px solid ${t.colors.border.medium}`,
+    borderLeftWidth: 3,
+    borderRadius: t.shape.radius.default,
+    padding: t.spacing(1, 1.5),
+    display: 'flex',
+    flexDirection: 'column',
+    gap: t.spacing(0.75),
+  }),
+  verifyOk: css({ borderLeftColor: t.colors.success.border }),
+  verifyWarn: css({ borderLeftColor: t.colors.warning.border }),
+  verifyHead: css({ display: 'flex', alignItems: 'center', gap: t.spacing(0.75) }),
+  verifyCounts: css({ display: 'flex', gap: t.spacing(0.5), flexWrap: 'wrap' }),
+  verifyTable: css({
+    width: '100%',
+    borderCollapse: 'collapse',
+    fontSize: t.typography.bodySmall.fontSize,
+    'th, td': { textAlign: 'left', verticalAlign: 'top', padding: t.spacing(0.5), borderTop: `1px solid ${t.colors.border.weak}` },
+    code: { whiteSpace: 'pre-wrap', wordBreak: 'break-word' },
+  }),
+  verifyList: css({ margin: t.spacing(0.5, 0, 0), paddingLeft: t.spacing(2.5) }),
   userRow: css({
     alignSelf: 'flex-end',
     maxWidth: '85%',

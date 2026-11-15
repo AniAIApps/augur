@@ -20,6 +20,8 @@ import { applyProposal } from '../agent/apply';
 import { loadCapabilities } from '../agent/capabilities';
 import { STEP_BUDGET } from '../constants';
 import { DEFAULT_MAX_TOKENS_PER_RUN, effectiveTokens } from '../settings';
+import { verifyEvidence, verificationMarkdown, type VerificationResult } from '../agent/verify';
+import { iso } from '../agent/time';
 import type { AgentEvent, AgentMode, DataSourceInfo, EvidenceRecord, Finding, GrafanaHttp, Hypothesis, Message, MessagesRequest, MessagesResponse, ModelCaller, ToolDefinition, Usage } from '../agent/types';
 import type { Proposal } from '../agent/proposals';
 import type { DashboardDraft } from '../agent/dashboard';
@@ -47,6 +49,8 @@ export interface HeadlessConfig {
   prompt: string;
   trajectoryPath?: string;
   answerPath?: string;
+  /** Write the evidence ledger (with findings and hypotheses) here, for `--verify` later. */
+  evidencePath?: string;
   quiet: boolean;
 }
 
@@ -434,7 +438,37 @@ export async function runHeadless(cfg: HeadlessConfig, opts: { call?: ModelCalle
     mkdirSync(dirname(cfg.answerPath), { recursive: true });
     writeFileSync(cfg.answerPath, answer);
   }
+  if (cfg.evidencePath) {
+    mkdirSync(dirname(cfg.evidencePath), { recursive: true });
+    writeFileSync(cfg.evidencePath, JSON.stringify({ ledger: evidence, findings, hypotheses }, null, 2));
+  }
   return { answer, stopReason, usage, evidence, findings, hypotheses, applied, trajectory };
+}
+
+/**
+ * `--verify <ledger.json>`: re-runs a saved evidence ledger (from AUGUR_EVIDENCE) against Grafana
+ * and reports what still holds. Exit code 0 when nothing changed, 3 when evidence changed or is no
+ * longer available.
+ */
+export async function verifyLedgerFile(env: NodeJS.ProcessEnv, file: string, http?: GrafanaHttp): Promise<{ text: string; code: number; result: VerificationResult }> {
+  const raw = JSON.parse(readFileSync(file, 'utf8'));
+  const data = Array.isArray(raw) ? { ledger: raw } : raw;
+  const ledger: EvidenceRecord[] = data.ledger ?? [];
+  const client =
+    http ??
+    grafanaClient({
+      grafanaUrl: env.GRAFANA_URL ?? 'http://localhost:3000',
+      grafanaToken: env.GRAFANA_TOKEN || env.GRAFANA_SERVICE_ACCOUNT_TOKEN || undefined,
+      grafanaUser: env.GRAFANA_USER,
+      grafanaPassword: env.GRAFANA_PASSWORD,
+      orgId: env.GRAFANA_ORG_ID,
+    });
+  const result = await verifyEvidence(client, ledger, { findings: data.findings, hypotheses: data.hypotheses });
+  if (env.AUGUR_VERIFICATION) {
+    mkdirSync(dirname(env.AUGUR_VERIFICATION), { recursive: true });
+    writeFileSync(env.AUGUR_VERIFICATION, JSON.stringify(result, null, 2));
+  }
+  return { text: verificationMarkdown(result, iso), code: result.counts.changed || result.counts.unavailable ? 3 : 0, result };
 }
 
 export function configFromEnv(env: NodeJS.ProcessEnv, argv: string[]): HeadlessConfig {
@@ -475,6 +509,7 @@ export function configFromEnv(env: NodeJS.ProcessEnv, argv: string[]): HeadlessC
     prompt,
     trajectoryPath: env.AUGUR_TRAJECTORY || undefined,
     answerPath: env.AUGUR_ANSWER || undefined,
+    evidencePath: env.AUGUR_EVIDENCE || undefined,
     quiet: env.AUGUR_QUIET === '1',
   };
 }

@@ -2,6 +2,13 @@
 
 ## 1.9.0
 
+- **Verify evidence** (new). Re-runs every query behind an investigation exactly as recorded (same datasource, query and absolute time range) and reports which evidence is *identical*, *changed* (late-arriving or backfilled data), *unavailable* (retention, a removed datasource, permissions) or *inconclusive* (recorded before this release), with before/after frame and row counts. Findings and hypotheses that cite changed or unavailable evidence are listed to re-examine.
+  - Evidence now records a **data digest** (frames, fields, labels and values only), so replays aren't thrown off by query statistics or series order.
+  - The latest verification is included in Markdown and PDF reports and in saved investigations.
+  - Saved investigations embed their structured ledger, so they can be verified later: ask Augur, which uses the new `verify_past_investigation` tool (and does so before relying on an old conclusion).
+  - Headless: `AUGUR_EVIDENCE=<file>` writes a run's ledger; `augur-headless --verify <file>` re-runs it (exit code 3 if anything changed or is unavailable; `AUGUR_VERIFICATION` writes the result).
+  - E2E: the ledger of a real run against Prometheus, Loki and Tempo is replayed and must reproduce every data digest.
+- Markdown reports say "with Augur in Grafana" (provider-neutral).
 - **No more silently dropped messages.** Every message now ends visibly: an answer, an error in the conversation, or a note that it was stopped.
   - A failure before the model was called (the browser refusing the run lock, an error building the prompt or tools) used to leave the conversation stuck as running, so later messages were dropped without a word. It is now shown as an error and the conversation is released.
   - Responses that aren't model responses (an HTML page from a proxy, an error object returned with HTTP 200) are reported instead of being treated as an empty answer.
