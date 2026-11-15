@@ -39,6 +39,10 @@ Type `/` to see your organization's [skills](../configure/app-settings.md#skills
 
 Augur reads freely within your permissions: queries, dashboards, alerts, annotations, silences. It **never changes anything by itself**. Dashboards, edits, silences and alert rules come back as proposal cards that you apply with a click, using your own permissions. MCP tools that change things need your role and an **Allow once** click.
 
+## When a message isn't answered
+
+Every message ends with an answer, an error explaining what went wrong, or a note that it was stopped. A message that got no answer is marked **Not answered** (or **Stopped**) with a **Retry** button, which re-runs that turn without repeating the question to the model. Any other message can be sent again with **Send again** (hover over it). See [Troubleshooting](../operate/troubleshooting.md) for common causes.
+
 ## Stopping and resuming
 
 **Stop** ends the run in the open conversation. If the tab reloads or crashes mid-run, the conversation reopens with **Resume**, which continues from the last checkpoint.

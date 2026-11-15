@@ -417,6 +417,7 @@ export function ChatView({ s, variant, autoStart }: ChatViewProps) {
               <TimelineItem
                 key={it.kind === 'tool' ? it.id : `${it.kind}-${i}`}
                 it={it}
+                index={i}
                 s={s}
                 latestDraft={latestDraft}
               />
@@ -549,14 +550,29 @@ export function ChatView({ s, variant, autoStart }: ChatViewProps) {
   );
 }
 
-function TimelineItem({ it, s, latestDraft }: { it: Item; s: AugurSession; latestDraft?: string }) {
+function TimelineItem({ it, index, s, latestDraft }: { it: Item; index: number; s: AugurSession; latestDraft?: string }) {
   const st = useStyles2(getStyles);
   switch (it.kind) {
     case 'user':
       return (
-        <div className={st.user}>
-          {it.mode === 'investigate' && <Badge color="purple" text="Investigation" icon="search" />}
-          <div>{it.text}</div>
+        <div className={st.userRow} data-testid="augur-user-message">
+          <div className={cx(st.user, it.outcome === 'failed' && st.userFailed)}>
+            {it.mode === 'investigate' && <Badge color="purple" text="Investigation" icon="search" />}
+            <div>{it.text}</div>
+          </div>
+          {it.outcome ? (
+            <div className={st.userStatus} role="status">
+              <Icon name={it.outcome === 'failed' ? 'exclamation-triangle' : 'square-shape'} size="sm" />
+              {it.outcome === 'failed' ? 'Not answered' : 'Stopped'}
+              <Button size="sm" variant="secondary" icon="sync" onClick={() => s.retry(index)} disabled={s.running || !s.dsConfig}>
+                Retry
+              </Button>
+            </div>
+          ) : (
+            <span className={st.userActions} data-actions>
+              <IconButton name="repeat" size="sm" aria-label="Send again" tooltip="Send again" onClick={() => s.retry(index)} disabled={s.running || !s.dsConfig} />
+            </span>
+          )}
         </div>
       );
     case 'assistant':
@@ -686,6 +702,18 @@ const getStyles = (t: GrafanaTheme2) => ({
   }),
   emptyTitle: css({ fontSize: t.typography.h4.fontSize }),
   starters: css({ display: 'flex', flexWrap: 'wrap', gap: t.spacing(1), justifyContent: 'center' }),
+  userRow: css({
+    alignSelf: 'flex-end',
+    maxWidth: '85%',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'flex-end',
+    gap: t.spacing(0.5),
+    '&:hover [data-actions], &:focus-within [data-actions]': { opacity: 1 },
+  }),
+  userFailed: css({ borderColor: t.colors.error.border }),
+  userStatus: css({ display: 'flex', alignItems: 'center', gap: t.spacing(0.75), color: t.colors.error.text, fontSize: t.typography.bodySmall.fontSize }),
+  userActions: css({ opacity: 0, '@media (hover: none)': { opacity: 1 } }),
   user: css({
     alignSelf: 'flex-end',
     maxWidth: '85%',

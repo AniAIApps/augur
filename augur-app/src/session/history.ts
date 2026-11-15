@@ -5,7 +5,15 @@ import { Proposal } from '../agent/proposals';
 import { PLUGIN_ID } from '../constants';
 
 export type Item =
-  | { kind: 'user'; text: string; mode: AgentMode }
+  | {
+      kind: 'user';
+      text: string;
+      mode: AgentMode;
+      /** Index of this message's turn in the model transcript (lets a failed turn be retried in place). */
+      msgIndex?: number;
+      /** Set when the run this message started did not produce an answer. */
+      outcome?: 'failed' | 'stopped';
+    }
   | { kind: 'assistant'; text: string }
   | { kind: 'tool'; id: string; name: string; label: string; input: Record<string, unknown>; status: 'running' | 'ok' | 'error'; output?: string; ms?: number; agent?: string }
   | { kind: 'finding'; finding: Finding }

@@ -202,6 +202,7 @@ type oaiResponse struct {
 		FinishReason string `json:"finish_reason"`
 		Message      struct {
 			Content   *string       `json:"content"`
+			Refusal   *string       `json:"refusal"`
 			ToolCalls []oaiToolCall `json:"tool_calls"`
 		} `json:"message"`
 	} `json:"choices"`
@@ -254,6 +255,12 @@ func fromOpenAI(status int, body []byte) (int, []byte) {
 	if c.Message.Content != nil && strings.TrimSpace(*c.Message.Content) != "" {
 		content = append(content, map[string]any{"type": "text", "text": *c.Message.Content})
 	}
+	// A refusal is an answer the user must see, not an empty response.
+	refused := false
+	if c.Message.Refusal != nil && strings.TrimSpace(*c.Message.Refusal) != "" {
+		content = append(content, map[string]any{"type": "text", "text": *c.Message.Refusal})
+		refused = true
+	}
 	for _, tc := range c.Message.ToolCalls {
 		var input any
 		if err := json.Unmarshal([]byte(tc.Function.Arguments), &input); err != nil || input == nil {
@@ -264,6 +271,9 @@ func fromOpenAI(status int, body []byte) (int, []byte) {
 	stop := finishToStop[c.FinishReason]
 	if stop == "" {
 		stop = "end_turn"
+	}
+	if refused {
+		stop = "refusal"
 	}
 	if len(c.Message.ToolCalls) > 0 {
 		stop = "tool_use"

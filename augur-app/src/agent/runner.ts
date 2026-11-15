@@ -131,6 +131,11 @@ export async function runAgent(opts: RunOptions): Promise<Message[]> {
       }
     }
     if (!toolUses.length || finalCall) {
+      const hasText = content.some((b) => b.type === 'text' && (b as TextBlock).text.trim());
+      const problem = emptyOrCutOff(String(resp.stop_reason ?? 'end_turn'), hasText);
+      if (problem) {
+        onEvent({ kind: 'error', text: problem });
+      }
       onEvent({ kind: 'done', stopReason: String(resp.stop_reason ?? 'end_turn'), steps });
       return messages;
     }
@@ -156,6 +161,22 @@ export async function runAgent(opts: RunOptions): Promise<Message[]> {
     messages.push({ role: 'user', content: userContent });
     opts.onProgress?.(messages);
   }
+}
+
+/** Why a final answer needs a visible note (an empty or truncated answer must never pass silently). */
+export function emptyOrCutOff(stopReason: string, hasText: boolean): string | undefined {
+  if (stopReason === 'max_tokens') {
+    return hasText
+      ? 'The answer was cut off at the model output limit. Raise Max tokens in the model datasource, or ask Augur to continue.'
+      : 'The model hit its output limit before answering. Raise Max tokens in the model datasource, or retry.';
+  }
+  if (hasText) {
+    return undefined;
+  }
+  if (stopReason === 'refusal') {
+    return 'The model declined to answer this request.';
+  }
+  return `The model returned an empty answer (stop reason: ${stopReason}). Retry, or try another model.`;
 }
 
 function withChoice(req: MessagesRequest, none: boolean): MessagesRequest {

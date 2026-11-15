@@ -36,6 +36,9 @@ const route = (opts: { url: string; method: string; data?: any; params?: any; he
   }
   if (url.endsWith('/resources/messages')) {
     const next = modelScript.shift();
+    if (typeof next === 'string') {
+      return next; // e.g. an HTML page from a proxy, returned with HTTP 200
+    }
     if (next instanceof Error) {
       return next;
     }
@@ -116,7 +119,7 @@ jest.mock('@grafana/runtime', () => ({
 
 import { ChatPage } from './ChatPage';
 import Sidebar from './Sidebar';
-import { resetStoreForTests } from '../session/store';
+import { getStore, resetStoreForTests } from '../session/store';
 
 function renderPage(path = '/a/augur-assistant-app') {
   return render(
@@ -542,6 +545,95 @@ describe('deleting a running conversation', () => {
     await settle();
     expect(storedIds()).not.toContain('sub-agent incident');
     expect(modelCalls()).toHaveLength(2); // the lead agent did not continue
+  });
+});
+
+describe('every sent message gets a visible outcome', () => {
+  const userMessage = (text: string) => screen.getAllByTestId('augur-user-message').find((m) => m.textContent?.includes(text))!;
+  const lastRequest = () => modelCalls()[modelCalls().length - 1].data;
+  const userTurns = (req: any) => req.messages.filter((m: any) => m.role === 'user' && m.content.some((b: any) => b.type === 'text' && /root cause/.test(b.text)));
+
+  test.each([
+    ['a proxy page returned with HTTP 200', '<html><body>Blocked by proxy</body></html>', /Unexpected response from the model datasource: <html><body>Blocked by proxy/],
+    ['an empty answer', { content: [] }, /The model returned an empty answer \(stop reason: end_turn\)/],
+    ['a refusal with no text', { content: [], stop_reason: 'refusal' }, /The model declined to answer/],
+    ['a truncated answer with no text', { content: [], stop_reason: 'max_tokens' }, /hit its output limit before answering/],
+  ])('%s is shown as an error, and the message can be retried in place', async (_name, reply, error) => {
+    modelScript = [reply, { content: [{ type: 'text', text: 'Here is the root cause.' }] }];
+    renderPage();
+    await ask('find the root cause');
+    expect(await screen.findByText(error)).toBeInTheDocument();
+    const msg = userMessage('find the root cause');
+    expect(within(msg).getByRole('status')).toHaveTextContent('Not answered');
+    fireEvent.click(within(msg).getByRole('button', { name: /Retry/ }));
+    expect(await screen.findByText('Here is the root cause.')).toBeInTheDocument();
+    // Retried in place: the model sees the question once, and there is still one bubble for it.
+    expect(userTurns(lastRequest())).toHaveLength(1);
+    expect(lastRequest().messages[lastRequest().messages.length - 1].role).toBe('user');
+    expect(screen.getAllByTestId('augur-user-message')).toHaveLength(1);
+    await waitFor(() => expect(within(userMessage('find the root cause')).queryByRole('status')).not.toBeInTheDocument());
+  });
+
+  test('a truncated answer that has text is shown with a note, not as a failure', async () => {
+    modelScript = [{ content: [{ type: 'text', text: 'Partial answer' }], stop_reason: 'max_tokens' }];
+    renderPage();
+    await ask('long question');
+    expect(await screen.findByText('Partial answer')).toBeInTheDocument();
+    expect(await screen.findByText(/The answer was cut off at the model output limit/)).toBeInTheDocument();
+  });
+
+  test('a failure before the model is called is shown, and the conversation is not left stuck', async () => {
+    // e.g. the browser refuses the run lock (locked-down or embedded browsers).
+    Object.defineProperty(navigator, 'locks', { configurable: true, value: { request: () => Promise.reject(new Error('SecurityError: The request was denied.')) } });
+    modelScript = [{ content: [{ type: 'text', text: 'Here is the root cause.' }] }];
+    try {
+      renderPage();
+      await ask('find the root cause');
+      expect(await screen.findByText(/Augur couldn't complete this request: SecurityError: The request was denied/)).toBeInTheDocument();
+      expect(modelCalls()).toHaveLength(0);
+      expect(within(userMessage('find the root cause')).getByRole('status')).toHaveTextContent('Not answered');
+    } finally {
+      delete (navigator as any).locks;
+    }
+    // Not stuck "running": retrying works.
+    fireEvent.click(within(userMessage('find the root cause')).getByRole('button', { name: /Retry/ }));
+    expect(await screen.findByText('Here is the root cause.')).toBeInTheDocument();
+    expect(userTurns(lastRequest())).toHaveLength(1);
+  });
+
+  test('a stopped run is marked and can be retried', async () => {
+    modelScript = [new Promise(() => undefined), { content: [{ type: 'text', text: 'Done now.' }] }];
+    renderPage();
+    await ask('slow question');
+    await waitFor(() => expect(modelCalls()).toHaveLength(1));
+    fireEvent.click(screen.getByRole('button', { name: /^Stop$/ }));
+    const msg = await waitFor(() => {
+      const m = userMessage('slow question');
+      expect(within(m).getByRole('status')).toHaveTextContent('Stopped');
+      return m;
+    });
+    fireEvent.click(within(msg).getByRole('button', { name: /Retry/ }));
+    expect(await screen.findByText('Done now.')).toBeInTheDocument();
+  });
+
+  test('an answered message can be sent again as a new message', async () => {
+    modelScript = [{ content: [{ type: 'text', text: 'First answer.' }] }, { content: [{ type: 'text', text: 'Second answer.' }] }];
+    renderPage();
+    await ask('what changed?');
+    await screen.findByText('First answer.');
+    fireEvent.click(within(userMessage('what changed?')).getByRole('button', { name: 'Send again' }));
+    expect(await screen.findByText('Second answer.')).toBeInTheDocument();
+    expect(screen.getAllByTestId('augur-user-message')).toHaveLength(2);
+  });
+
+  test('sending while this conversation is still running explains why instead of dropping the message', async () => {
+    modelScript = [new Promise(() => undefined)];
+    renderPage();
+    await ask('first');
+    await waitFor(() => expect(modelCalls()).toHaveLength(1));
+    // e.g. a starter button or a second submit while the first run is in flight
+    getStore().send('second');
+    expect(await screen.findByText(/Augur is still working on this conversation/)).toBeInTheDocument();
   });
 });
 

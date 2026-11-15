@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.0
+
+- **Upstream responses are checked before they reach the app.** For the Claude Messages format, a 2xx response must be a model response: an HTML page (a TLS-inspecting proxy or sign-in wall), an error object returned with HTTP 200 (some gateways do this for spent budgets) or a body without `content` becomes a `502` with the reason and a short excerpt, instead of an empty answer. Non-JSON error bodies are wrapped into the usual error shape, and failed calls are logged with their status.
+- **OpenAI-compatible refusals are kept**: `message.refusal` becomes the answer text with `stop_reason: "refusal"`, instead of an empty response.
+
 ## 1.8.0
 
 - No changes in the datasource; released alongside the app (history deletion, scrolling conversation pane).

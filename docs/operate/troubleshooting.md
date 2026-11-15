@@ -50,6 +50,14 @@
 
 ## Using Augur
 
+??? failure "A message shows *Not answered*"
+    The conversation shows why just above the marker: a gateway or proxy error, a response that wasn't a model response (often a proxy or sign-in page between Grafana and the gateway, shown with an excerpt), an empty answer, or a refusal. Fix the cause if there is one, then click **Retry** on the message. It re-runs that turn in place, so the model sees the question once.
+
+    If the excerpt is an HTML page, Grafana's server is being intercepted on its way to the model endpoint. Allow the endpoint in the proxy, or add the proxy's CA (see [TLS and internal CAs](../configure/tls.md)).
+
+??? failure "*The answer was cut off at the model output limit*"
+    The model reached the datasource's **Max tokens** (default 8192). Raise it in the model datasource, or ask Augur to continue.
+
 ??? failure "*Running in another tab*"
     Another tab is driving this conversation. Use that tab, or close it: this tab takes over within about 12 seconds.
 

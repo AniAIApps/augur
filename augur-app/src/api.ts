@@ -120,9 +120,15 @@ export function datasourceModelCaller(uid: string, onRetry?: (attempt: number, r
   return async (req: MessagesRequest, signal: AbortSignal): Promise<MessagesResponse> => {
     for (let attempt = 0; ; attempt++) {
       try {
-        return await grafanaHttp.post<MessagesResponse>(`/api/datasources/uid/${encodeURIComponent(uid)}/resources/messages`, req, signal);
+        const resp = await grafanaHttp.post<MessagesResponse>(`/api/datasources/uid/${encodeURIComponent(uid)}/resources/messages`, req, signal);
+        // Never treat something that isn't a model response as an (empty) answer.
+        if (!resp || typeof resp !== 'object' || !Array.isArray((resp as { content?: unknown }).content)) {
+          const preview = typeof resp === 'string' ? (resp as string).replace(/\s+/g, ' ').slice(0, 160) : JSON.stringify(resp)?.slice(0, 160);
+          throw Object.assign(new Error(`Unexpected response from the model datasource${preview ? `: ${preview}` : ''}`), { unexpected: true });
+        }
+        return resp;
       } catch (e) {
-        if (signal.aborted) {
+        if (signal.aborted || (e as { unexpected?: boolean })?.unexpected) {
           throw e;
         }
         const fe = e as FetchError<any>;

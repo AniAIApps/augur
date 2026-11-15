@@ -22,6 +22,7 @@ import { STEP_BUDGET } from '../constants';
 import { AugurSettings, DEFAULT_MAX_TOKENS_PER_RUN, effectiveTokens, loadPersonalRules, loadSettings, Skill } from '../settings';
 import { Item, loadCurrent, loadHistory, newSession, patchStored, persist, SessionState, setCurrent, deleteSession, deleteSessions, isDeleted, isInvestigation, setHistoryRetentionDays } from './history';
 import { acquireRunLock, RunLock } from './runLock';
+import { errorMessage } from '../agent/grafana';
 
 export const RANGE_MS: Record<string, number> = { '15m': 9e5, '1h': 36e5, '3h': 108e5, '6h': 216e5, '12h': 432e5, '24h': 864e5, '2d': 1728e5, '7d': 6048e5 };
 
@@ -73,6 +74,10 @@ interface RunCtx {
   usage: Required<Usage>;
   /** Cross-tab run lock, held for the whole run. */
   lock?: RunLock;
+  /** Something the user can act on was shown: an answer or a proposal. */
+  answered: boolean;
+  /** An error was shown for this run. */
+  failed: boolean;
 }
 
 /** Expands "/skill-name args" into the skill's instructions. */
@@ -508,6 +513,7 @@ class AugurStore {
     return (e: AgentEvent) => {
       switch (e.kind) {
         case 'assistant_text':
+          run.answered = true;
           this.pushItemTo(id, { kind: 'assistant', text: e.text });
           break;
         case 'tool_start':
@@ -541,6 +547,7 @@ class AugurStore {
           this.publishRuns();
           break;
         case 'error':
+          run.failed = true;
           this.pushItemTo(id, { kind: 'error', text: e.text });
           break;
         case 'done':
@@ -560,13 +567,8 @@ class AugurStore {
 
   send = async (textIn: string, extra?: { context?: string; mode?: AgentMode; pageContext?: string }) => {
     const text = textIn.trim();
-    const { dsUid } = this.state;
     const id = this.state.session.id;
-    if (!text || this.runs.has(id) || this.state.runningElsewhere || !dsUid) {
-      return;
-    }
-    if (this.runs.size >= MAX_PARALLEL_RUNS) {
-      this.pushItem({ kind: 'notice', text: `${this.runs.size} conversations are already running. Wait for one to finish or stop one, then send again.` });
+    if (!text || !this.canStart(id)) {
       return;
     }
     const mode = extra?.mode ?? this.state.session.mode;
@@ -591,13 +593,13 @@ class AugurStore {
         // Each investigation records its own question and window (a conversation can hold several).
         investigation: mode === 'investigate' ? { question: text, startedAt, range: { from: startedAt - rangeMs, to: startedAt } } : s.investigation,
         title: s.items.length ? s.title : text.slice(0, 80),
-        items: [...s.items, { kind: 'user', text, mode }],
+        items: [...s.items, { kind: 'user', text, mode, msgIndex: transcript.length - 1 }],
         messages: transcript,
       }),
       true
     );
     this.notifyNow();
-    await this.run(id, transcript, mode, extra?.pageContext);
+    await this.run(id, transcript, mode, extra?.pageContext, this.state.session.items.length - 1);
   };
 
   /**
@@ -643,7 +645,7 @@ class AugurStore {
       items: x.items.map((it) => (it.kind === 'tool' && it.status === 'running' ? { ...it, status: 'error', output: 'interrupted' } : it)),
       messages: transcript,
     }));
-    await this.run(s.id, transcript, s.run.mode, pageContext);
+    await this.run(s.id, transcript, s.run.mode, pageContext, s.items.reduce((last, x, i) => (x.kind === 'user' ? i : last), -1));
   };
 
   dismissInterrupted = () => {
@@ -657,15 +659,19 @@ class AugurStore {
     );
   };
 
-  private async run(id: string, transcript: Message[], mode: AgentMode, pageContext?: string) {
+  /**
+   * Runs the agent for a conversation. Every run ends visibly: with an answer, an error in the
+   * conversation, or a note that it was stopped. The message that started it is marked when it got
+   * no answer, so it can be retried. userItem is the index of that message in the conversation.
+   */
+  private async run(id: string, transcript: Message[], mode: AgentMode, pageContext?: string, userItem?: number) {
     const { dsUid, settings, mcp, model, dsConfig } = this.state;
     const start = id === this.state.session.id ? this.state.session : undefined;
     if (!dsUid || !start) {
       return;
     }
     if (liveLeaseElsewhere(id, this.tabId)) {
-      this.set({ runningElsewhere: true });
-      this.watchOtherTab();
+      this.notSentHere(id, userItem);
       return;
     }
     const ac = new AbortController();
@@ -677,75 +683,76 @@ class AugurStore {
       hypotheses: start.hypotheses,
       status: '',
       usage: start.usage ?? ZERO_USAGE,
+      answered: false,
+      failed: false,
     };
     // Registered before the lock is awaited so a second send in this tab is refused straight away.
     this.runs.set(id, run);
-    const lock = await acquireRunLock(id, this.tabId);
-    if (!lock) {
-      // Another tab took this conversation's run lock: follow it instead of running twice.
-      this.runs.delete(id);
-      this.set({ runningElsewhere: true });
-      this.watchOtherTab();
-      return;
-    }
-    run.lock = lock;
-    this.writeLease(id);
-    this.ensureHeartbeat();
-    if (ac.signal.aborted || isDeleted(id)) {
-      // Stopped or deleted while waiting for the lock.
-      lock.release();
-      this.runs.delete(id);
-      this.releaseLease(id);
-      this.publishRuns();
-      return;
-    }
-    this.setNow({ running: true, usage: run.usage });
-    this.updateSessionById(id, (s) => ({ ...s, run: { status: 'running', mode, startedAt: Date.now() } }), true);
-    this.publishRuns();
-    const onEvent = this.eventsFor(run);
-
-    // Installed apps and panels (cached; never holds up a run for long).
-    const capabilities = await Promise.race([this.getCapabilities(), new Promise<undefined>((r) => setTimeout(() => r(undefined), 3000))]);
-    const now = Date.now();
-    const inv = run.session.investigation;
-    // A new investigation queries exactly the window recorded for its report; a resumed run uses now.
-    const range = mode === 'investigate' && inv && !inv.completedAt && now - inv.startedAt < 60_000 ? inv.range : { from: now - (RANGE_MS[run.session.rangeKey] ?? 36e5), to: now };
-    const datasources = listDataSources();
-    const user = config.bootData?.user;
-    const call = datasourceModelCaller(dsUid, (attempt, reason) => onEvent({ kind: 'status', text: `Gateway unavailable (${reason}); retrying (${attempt}/4)…` }));
-    const subAgents = mode === 'investigate' && settings.enableSubAgents !== false;
-    const skills = settings.skills ?? [];
-    const promptBase = {
-      now,
-      range,
-      datasources,
-      user: { login: user?.login, orgRole: user?.orgRole },
-      grafanaVersion: config.buildInfo?.version,
-      rules: settings.rules,
-      personalRules: loadPersonalRules(),
-      skills,
-      memorySummary: settings.memory?.summary,
-      pageContext,
-      mcpServers: mcp.servers.filter((s) => s.tools?.length).map((s) => s.name),
-      timezone: resolveTimezone(user?.timezone),
-      capabilities,
-    };
-    const system = buildSystemPrompt({ ...promptBase, mode, subAgents });
-    const propose = (p: Proposal) =>
-      this.updateSessionById(id, (s) => ({ ...s, proposals: { ...s.proposals, [p.id]: p }, items: [...s.items, { kind: 'proposal', id: p.id }] }), true);
-    const tools = buildToolset(mode, {
-      propose,
-      skills,
-      memory: settings.memory,
-      mcp: mcpTools(mcp, dsUid, () => this.reloadMcp(dsUid)),
-      capabilities: this.getCapabilities,
-      delegate: subAgents ? { call, model, maxTokens: dsConfig?.maxTokens, baseSystem: buildSystemPrompt({ ...promptBase, mode: 'chat' }), onEvent } : undefined,
-    });
-
-    const startTokens = effectiveTokens(run.usage);
-    const ceiling = settings.maxTokensPerRun ?? DEFAULT_MAX_TOKENS_PER_RUN;
+    let started = false;
     let completed = false;
     try {
+      const lock = await acquireRunLock(id, this.tabId);
+      if (!lock) {
+        // Another tab took this conversation's run lock: follow it instead of running twice.
+        this.runs.delete(id);
+        this.notSentHere(id, userItem);
+        return;
+      }
+      run.lock = lock;
+      if (ac.signal.aborted || isDeleted(id)) {
+        return; // stopped or deleted while waiting for the lock
+      }
+      this.writeLease(id);
+      this.ensureHeartbeat();
+      started = true;
+      this.setNow({ running: true, usage: run.usage });
+      this.updateSessionById(id, (s) => ({ ...s, run: { status: 'running', mode, startedAt: Date.now() } }), true);
+      this.publishRuns();
+      const onEvent = this.eventsFor(run);
+
+      // Installed apps and panels (cached; never holds up a run for long).
+      const capabilities = await Promise.race([this.getCapabilities(), new Promise<undefined>((r) => setTimeout(() => r(undefined), 3000))]);
+      const now = Date.now();
+      const inv = run.session.investigation;
+      // A new investigation queries exactly the window recorded for its report; a resumed run uses now.
+      const range = mode === 'investigate' && inv && !inv.completedAt && now - inv.startedAt < 60_000 ? inv.range : { from: now - (RANGE_MS[run.session.rangeKey] ?? 36e5), to: now };
+      const datasources = listDataSources();
+      const user = config.bootData?.user;
+      const call = datasourceModelCaller(dsUid, (attempt, reason) => onEvent({ kind: 'status', text: `Gateway unavailable (${reason}); retrying (${attempt}/4)…` }));
+      const subAgents = mode === 'investigate' && settings.enableSubAgents !== false;
+      const skills = settings.skills ?? [];
+      const promptBase = {
+        now,
+        range,
+        datasources,
+        user: { login: user?.login, orgRole: user?.orgRole },
+        grafanaVersion: config.buildInfo?.version,
+        rules: settings.rules,
+        personalRules: loadPersonalRules(),
+        skills,
+        memorySummary: settings.memory?.summary,
+        pageContext,
+        mcpServers: mcp.servers.filter((s) => s.tools?.length).map((s) => s.name),
+        timezone: resolveTimezone(user?.timezone),
+        capabilities,
+      };
+      const system = buildSystemPrompt({ ...promptBase, mode, subAgents });
+      const propose = (p: Proposal) => {
+        run.answered = true;
+        this.updateSessionById(id, (s) => ({ ...s, proposals: { ...s.proposals, [p.id]: p }, items: [...s.items, { kind: 'proposal', id: p.id }] }), true);
+      };
+      const tools = buildToolset(mode, {
+        propose,
+        skills,
+        memory: settings.memory,
+        mcp: mcpTools(mcp, dsUid, () => this.reloadMcp(dsUid)),
+        capabilities: this.getCapabilities,
+        delegate: subAgents ? { call, model, maxTokens: dsConfig?.maxTokens, baseSystem: buildSystemPrompt({ ...promptBase, mode: 'chat' }), onEvent } : undefined,
+      });
+
+      const startTokens = effectiveTokens(run.usage);
+      const ceiling = settings.maxTokensPerRun ?? DEFAULT_MAX_TOKENS_PER_RUN;
+
       const messages = await runAgent({
         call,
         tools,
@@ -803,35 +810,124 @@ class AugurStore {
         messages,
         investigation: mode === 'investigate' && s.investigation ? { ...s.investigation, completedAt: Date.now() } : s.investigation,
       }));
+    } catch (e) {
+      // Anything unexpected (building the prompt, a tool registry problem, the lock) must not leave
+      // the conversation stuck as "running" with the message unanswered.
+      if (!ac.signal.aborted) {
+        console.error('Augur run failed', e);
+        run.failed = true;
+        this.pushItemTo(id, { kind: 'error', text: `Augur couldn't complete this request: ${errorMessage(e)}` });
+      }
     } finally {
       this.runs.delete(id);
       run.lock?.release();
-      this.releaseLease(id);
+      if (started) {
+        this.releaseLease(id);
+      }
       for (const approvalId of run.approvals.keys()) {
         this.approvalOwner.delete(approvalId);
       }
-      const finished = (s: SessionState): SessionState => ({
+      if (!this.disposed && !isDeleted(id) && (started || run.failed)) {
+        if (started && completed && !run.answered && !run.failed && !ac.signal.aborted) {
+          // The run ended without anything to show: say so rather than going quiet.
+          run.failed = true;
+          this.pushItemTo(id, { kind: 'error', text: 'The model returned no answer. Retry, or check the model datasource.' });
+        }
+        const outcome: 'failed' | 'stopped' | undefined = ac.signal.aborted ? 'stopped' : run.failed || !completed ? 'failed' : undefined;
+        const finished = (s: SessionState): SessionState => ({
+          ...s,
+          run: completed || ac.signal.aborted || run.failed ? undefined : s.run,
+          items: s.items.map((x, i) =>
+            x.kind === 'tool' && x.status === 'running'
+              ? { ...x, status: 'error', output: 'cancelled' }
+              : x.kind === 'approval' && x.state === 'pending'
+                ? { ...x, state: 'denied' }
+                : x.kind === 'user' && i === userItem
+                  ? { ...x, outcome }
+                  : x
+          ),
+        });
+        if (id === this.state.session.id) {
+          this.updateSession(finished, true);
+        } else {
+          persist(finished({ ...run.session, updatedAt: Date.now() }), false);
+        }
+      }
+      if (!this.disposed) {
+        this.publishRuns();
+        this.setNow({ ...(id === this.state.session.id ? { running: false, status: '' } : {}), history: loadHistory() });
+      }
+    }
+  }
+
+  /** The conversation is running in another tab: the message was not sent from this one. */
+  private notSentHere(id: string, userItem?: number) {
+    this.updateSessionById(
+      id,
+      (s) => ({
         ...s,
-        run: completed || ac.signal.aborted ? undefined : s.run,
-        items: s.items.map((x) =>
-          x.kind === 'tool' && x.status === 'running'
-            ? { ...x, status: 'error', output: 'cancelled' }
-            : x.kind === 'approval' && x.state === 'pending'
-              ? { ...x, state: 'denied' }
-              : x
-        ),
-      });
-      if (this.disposed) {
+        items: [
+          ...s.items.map((x, i) => (x.kind === 'user' && i === userItem ? { ...x, outcome: 'failed' as const } : x)),
+          { kind: 'notice', text: 'This conversation is running in another browser tab, so your message was not sent from here. Use that tab, or retry here when it finishes.' },
+        ],
+      }),
+      true
+    );
+    this.set({ runningElsewhere: true });
+    this.watchOtherTab();
+  }
+
+  /**
+   * Sends a message again. A failed last message is retried in place: the model sees that turn
+   * once, not twice. Any other message is sent again as a new one.
+   */
+  retry = async (itemIndex: number) => {
+    const s = this.state.session;
+    const it = s.items[itemIndex];
+    if (it?.kind !== 'user' || this.runs.has(s.id)) {
+      return;
+    }
+    const lastUser = s.items.reduce((last, x, i) => (x.kind === 'user' ? i : last), -1);
+    const turn = it.msgIndex !== undefined ? s.messages[it.msgIndex] : undefined;
+    if (itemIndex === lastUser && it.outcome && turn?.role === 'user') {
+      if (!this.canStart(s.id)) {
         return;
       }
-      if (id === this.state.session.id) {
-        this.updateSession(finished, true);
-      } else {
-        persist(finished({ ...run.session, updatedAt: Date.now() }), false);
-      }
-      this.publishRuns();
-      this.setNow({ ...(id === this.state.session.id ? { running: false, status: '' } : {}), history: loadHistory() });
+      const transcript = s.messages.slice(0, (it.msgIndex as number) + 1);
+      this.updateSession(
+        (x) => ({
+          ...x,
+          messages: transcript,
+          items: [...x.items.map((y, i) => (i === itemIndex ? { ...y, outcome: undefined } : y)), { kind: 'notice', text: 'Retrying…' }],
+        }),
+        true
+      );
+      this.notifyNow();
+      await this.run(s.id, transcript, it.mode, undefined, itemIndex);
+      return;
     }
+    await this.send(it.text, { mode: it.mode });
+  };
+
+  /** Explains (in the conversation) why a run can't start now; true if it can. */
+  private canStart(id: string): boolean {
+    if (!this.state.dsUid) {
+      this.pushItem({ kind: 'error', text: 'No model datasource is selected, so the message was not sent. Add or choose an Augur datasource.' });
+      return false;
+    }
+    if (this.runs.has(id)) {
+      this.pushItem({ kind: 'notice', text: 'Augur is still working on this conversation. Wait for it to finish or press Stop, then send again.' });
+      return false;
+    }
+    if (this.state.runningElsewhere) {
+      this.pushItem({ kind: 'notice', text: 'This conversation is running in another browser tab. Use that tab, or send here when it finishes.' });
+      return false;
+    }
+    if (this.runs.size >= MAX_PARALLEL_RUNS) {
+      this.pushItem({ kind: 'notice', text: `${this.runs.size} conversations are already running. Wait for one to finish or stop one, then send again.` });
+      return false;
+    }
+    return true;
   }
 
   resolveApproval = (approvalId: string, ok: boolean) => {

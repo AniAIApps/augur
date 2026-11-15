@@ -355,6 +355,11 @@ func (d *Datasource) handleMessages(w http.ResponseWriter, r *http.Request) {
 	status := resp.StatusCode
 	if d.settings.APIFormat == models.APIFormatOpenAI {
 		status, respBody = fromOpenAI(status, respBody)
+	} else {
+		status, respBody = checkMessagesResponse(status, resp.Header.Get("Content-Type"), respBody)
+	}
+	if status >= 300 {
+		d.logger.Warn("Model call failed", "status", status, "model", model, "error", truncate(string(respBody), 300))
 	}
 	if status < 300 {
 		d.limiter.record(user, effectiveTokens(respBody), time.Now())
@@ -362,6 +367,58 @@ func (d *Datasource) handleMessages(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_, _ = w.Write(respBody)
+}
+
+// checkMessagesResponse makes sure what reaches the app is either a Messages response or an error it
+// can show. Proxies (TLS-inspecting gateways, SSO walls) and some gateways answer 200 with an HTML
+// page or an error object; passed through, those look like an empty answer and the chat goes silent.
+func checkMessagesResponse(status int, contentType string, body []byte) (int, []byte) {
+	var r struct {
+		Type    string          `json:"type"`
+		Content json.RawMessage `json:"content"`
+		Error   json.RawMessage `json:"error"`
+	}
+	parseErr := json.Unmarshal(body, &r)
+	if status >= 300 {
+		if parseErr == nil && len(r.Error) > 0 {
+			return status, body // already a structured error
+		}
+		return status, mustJSON(errorEnvelope("upstream_error", fmt.Sprintf("HTTP %d from the model endpoint: %s", status, snippet(contentType, body))))
+	}
+	if parseErr != nil {
+		return http.StatusBadGateway, mustJSON(errorEnvelope("invalid_upstream_response",
+			"the model endpoint returned something that is not a model response ("+snippet(contentType, body)+"). A proxy or sign-in page may be intercepting requests to it."))
+	}
+	if len(r.Error) > 0 && string(r.Error) != "null" {
+		var e struct {
+			Type    string `json:"type"`
+			Message string `json:"message"`
+		}
+		_ = json.Unmarshal(r.Error, &e)
+		if e.Message == "" {
+			e.Message = truncate(string(r.Error), 300)
+		}
+		if e.Type == "" {
+			e.Type = "upstream_error"
+		}
+		return http.StatusBadGateway, mustJSON(errorEnvelope(e.Type, e.Message))
+	}
+	var blocks []json.RawMessage
+	if json.Unmarshal(r.Content, &blocks) != nil {
+		return http.StatusBadGateway, mustJSON(errorEnvelope("invalid_upstream_response", "the model endpoint's response has no content: "+snippet(contentType, body)))
+	}
+	return status, body
+}
+
+func snippet(contentType string, body []byte) string {
+	text := strings.Join(strings.Fields(string(body)), " ")
+	if text == "" {
+		text = "empty body"
+	}
+	if contentType != "" {
+		return contentType + ": " + truncate(text, 200)
+	}
+	return truncate(text, 200)
 }
 
 // ---- /config -------------------------------------------------------------

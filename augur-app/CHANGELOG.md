@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.9.0
+
+- **No more silently dropped messages.** Every message now ends visibly: an answer, an error in the conversation, or a note that it was stopped.
+  - A failure before the model was called (the browser refusing the run lock, an error building the prompt or tools) used to leave the conversation stuck as running, so later messages were dropped without a word. It is now shown as an error and the conversation is released.
+  - Responses that aren't model responses (an HTML page from a proxy, an error object returned with HTTP 200) are reported instead of being treated as an empty answer.
+  - An empty answer, a refusal with no text, and an answer cut off at the output limit are explained (the last suggests raising *Max tokens*).
+  - Sending while the conversation is still running, while it runs in another tab, without a model datasource, or past the three-conversation limit now explains why in the conversation instead of doing nothing.
+- **Retry.** A message that got no answer is marked *Not answered* (or *Stopped*) with a **Retry** button that re-runs that turn in place, so the model sees the question once. Any other sent message can be sent again from its **Send again** button.
+
 ## 1.8.0
 
 - **Delete your history.** *Delete history* in the conversations list permanently deletes your conversations from this browser: everything, only chats or only investigations, optionally including pinned ones. The dialog shows how many will go; running conversations among them are stopped first, and nothing deleted can be restored by a finishing run or another tab. Investigations saved to Grafana are dashboards and are not affected.
