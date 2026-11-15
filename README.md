@@ -185,6 +185,8 @@ Requires **Grafana 12.0 or later** (OSS or Enterprise). The same build runs on 1
    With the Grafana Helm chart, put the same under `grafana.ini:` (`plugins:` / `navigation.app_sections:` keys). These must be in `grafana.ini`: `GF_*` environment variables cannot add `navigation.app_sections` entries. Other placements: `explore`, `alerts-and-incidents`, `observability`, `infrastructure`; a lower weight moves it up (Dashboards -3700, Explore -3600, Drilldown -3500, Alerting -3300).
 3. Restart Grafana, enable the **Augur** app, and add a **Claude (Augur)** datasource.
 
+No signature from Grafana Labs is needed to run Augur. To have Grafana verify it at startup instead of allowing it unsigned, sign it privately for your organisation's Grafana URLs. Grafana only signs a plugin for the Grafana Cloud account whose slug starts the plugin ID, so run `scripts/set-plugin-ids.sh <your-slug>` first (building `<slug>-augur-app` and `<slug>-augur-datasource`). See [Plugin signing](https://aniaiapps.github.io/augur/getting-started/signing/) and [Using Augur in your organisation](https://aniaiapps.github.io/augur/operate/organisation/).
+
 The docked sidebar uses Grafana's extension sidebar. On Grafana versions without it, every entry point (panel menu, Explore, alerts, command palette) opens the full Augur page instead.
 
 ---
@@ -385,11 +387,11 @@ Releases are built and published by GitHub Actions ([`release.yml`](.github/work
 
 Each release runs lint, tests, the Grafana 12.0 compatibility check and the full build (Go backends for Linux, macOS and Windows). It optionally signs the plugins, checks the archive layout, runs Grafana's plugin validator (advisory), and publishes both zips plus `SHA256SUMS` to GitHub Releases, with notes from the CHANGELOGs and build-provenance attestations (`gh attestation verify <zip> --repo AniAIApps/augur`). Add a `## <version>` section to both CHANGELOGs before releasing.
 
-To sign, add the repository secret `GRAFANA_ACCESS_POLICY_TOKEN`. For a private signature, also add the variable `GRAFANA_SIGN_ROOT_URLS` (e.g. `https://grafana.example.com`). Without the secret, unsigned builds are published.
+To sign, add the repository secret `GRAFANA_ACCESS_POLICY_TOKEN`. For a private signature, also add the variables `GRAFANA_SIGN_ROOT_URLS` (e.g. `https://grafana.example.com`) and `GRAFANA_PLUGIN_ID_PREFIX` (your Grafana Cloud account slug; the plugins are renamed to `<slug>-augur-app` / `<slug>-augur-datasource` so that account can sign them). Without the secret, unsigned builds are published.
 
 **Screenshots:** `cd scripts/screenshots && npm i && node build.mjs && node shoot.mjs` renders the real components with `@grafana/ui` against a scripted demo incident in headless Chrome and regenerates `docs/img`.
 
-**Signing:** `npx @grafana/sign-plugin@latest --rootUrls https://grafana.example.com` (private signing), or allow the unsigned plugins with `allow_loading_unsigned_plugins`.
+**Signing:** allow the unsigned plugins with `allow_loading_unsigned_plugins`, or sign privately: `scripts/set-plugin-ids.sh <slug> && make install build`, then `npx @grafana/sign-plugin@latest --distDir dist --rootUrls https://grafana.example.com` in both plugin folders, then `make zip`. Details in [Plugin signing](https://aniaiapps.github.io/augur/getting-started/signing/).
 
 **Roadmap:** server-side runner for scheduled automations, alert-triggered and cross-device investigations; Slack; dashboard v2 schema editing; streaming responses.
 

@@ -84,6 +84,7 @@ nav:
       - Alerts and silences: guide/alerting.md
       - Reports and export: guide/reports.md
   - Operate:
+      - Using Augur in your organisation: operate/organisation.md
       - Security model: operate/security.md
       - Permissions: operate/permissions.md
       - Troubleshooting: operate/troubleshooting.md

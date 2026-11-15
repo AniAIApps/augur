@@ -9,6 +9,8 @@ name: Release
 #  - secret   GRAFANA_ACCESS_POLICY_TOKEN  sign the plugins (token with plugins:write scope from grafana.com)
 #  - variable GRAFANA_SIGN_ROOT_URLS       comma-separated Grafana URLs for a *private* signature
 #                                          (omit for community signing, which needs the augur- org on grafana.com)
+#  - variable GRAFANA_PLUGIN_ID_PREFIX     your Grafana Cloud account slug: builds <slug>-augur-app and
+#                                          <slug>-augur-datasource, which that account can sign privately
 
 on:
   push:
@@ -99,6 +101,7 @@ jobs:
       VERSION: ${{ needs.prepare.outputs.version }}
       GRAFANA_ACCESS_POLICY_TOKEN: ${{ secrets.GRAFANA_ACCESS_POLICY_TOKEN }}
       GRAFANA_SIGN_ROOT_URLS: ${{ vars.GRAFANA_SIGN_ROOT_URLS }}
+      GRAFANA_PLUGIN_ID_PREFIX: ${{ vars.GRAFANA_PLUGIN_ID_PREFIX }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -115,6 +118,10 @@ jobs:
 
       - name: Align plugin versions with the tag
         run: scripts/set-version.sh "$VERSION"
+
+      - name: Rename plugins for a private signature
+        if: env.GRAFANA_PLUGIN_ID_PREFIX != ''
+        run: scripts/set-plugin-ids.sh "$GRAFANA_PLUGIN_ID_PREFIX"
 
       - name: Install
         run: make install
@@ -149,7 +156,8 @@ jobs:
             v=$(unzip -p "$z" "$id/plugin.json" | node -p "JSON.parse(require('fs').readFileSync(0)).info.version")
             [ "$v" = "$VERSION" ] || { echo "::error::$id plugin.json version $v != $VERSION"; exit 1; }
           done
-          unzip -l "release/augur-claude-datasource-$VERSION.zip" | grep -q gpx_augur_linux_amd64 || { echo "::error::backend binary missing"; exit 1; }
+          ds_id=$(node -p "require('./augur-datasource/src/plugin.json').id")
+          unzip -l "release/$ds_id-$VERSION.zip" | grep -q gpx_augur_linux_amd64 || { echo "::error::backend binary missing"; exit 1; }
 
       - name: Validate with Grafana plugin validator (advisory)
         continue-on-error: true
@@ -197,6 +205,5 @@ jobs:
           draft: ${{ inputs.draft == true }}
           fail_on_unmatched_files: true
           files: |
-            release/augur-assistant-app-${{ needs.prepare.outputs.version }}.zip
-            release/augur-claude-datasource-${{ needs.prepare.outputs.version }}.zip
+            release/*-${{ needs.prepare.outputs.version }}.zip
             release/SHA256SUMS

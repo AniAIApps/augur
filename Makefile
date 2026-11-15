@@ -1,6 +1,9 @@
 APP := augur-app
 DS  := augur-datasource
 VERSION ?= $(shell node -p "require('./$(APP)/package.json').version")
+# Plugin IDs (changed by scripts/set-plugin-ids.sh for an organisation's private signature).
+APP_ID := $(shell node -p "require('./$(APP)/src/plugin.json').id")
+DS_ID  := $(shell node -p "require('./$(DS)/src/plugin.json').id")
 
 .PHONY: install test lint compat build build-frontend build-backend build-headless e2e bench package zip version clean
 
@@ -47,11 +50,11 @@ package: build zip
 # Zips whatever is already in */dist (used by CI after signing).
 zip:
 	rm -rf release && mkdir -p release/tmp
-	cp -r $(APP)/dist release/tmp/augur-assistant-app
-	cp -r $(DS)/dist release/tmp/augur-claude-datasource
+	cp -r $(APP)/dist release/tmp/$(APP_ID)
+	cp -r $(DS)/dist release/tmp/$(DS_ID)
 	find release/tmp -name '*.map' -delete
-	cd release/tmp && zip -qr ../augur-assistant-app-$(VERSION).zip augur-assistant-app
-	cd release/tmp && zip -qr ../augur-claude-datasource-$(VERSION).zip augur-claude-datasource
+	cd release/tmp && zip -qr ../$(APP_ID)-$(VERSION).zip $(APP_ID)
+	cd release/tmp && zip -qr ../$(DS_ID)-$(VERSION).zip $(DS_ID)
 	rm -rf release/tmp
 	cd release && sha256sum *.zip > SHA256SUMS
 

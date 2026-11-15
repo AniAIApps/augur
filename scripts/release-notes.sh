@@ -12,11 +12,13 @@ section() {
 }
 APP="$(section "$ROOT/augur-app/CHANGELOG.md")"
 DS="$(section "$ROOT/augur-datasource/CHANGELOG.md")"
-if [ -n "$APP" ]; then printf '### Augur app (augur-assistant-app)\n%s\n\n' "$APP"; fi
-if [ -n "$DS" ]; then printf '### Claude (Augur) datasource (augur-claude-datasource)\n%s\n\n' "$DS"; fi
+APP_ID=$(node -p "require('$ROOT/augur-app/src/plugin.json').id")
+DS_ID=$(node -p "require('$ROOT/augur-datasource/src/plugin.json').id")
+if [ -n "$APP" ]; then printf '### Augur app (%s)\n%s\n\n' "$APP_ID" "$APP"; fi
+if [ -n "$DS" ]; then printf '### Augur model datasource (%s)\n%s\n\n' "$DS_ID" "$DS"; fi
 cat <<MD
 ### Install
 1. Download both zips below and unzip them into your Grafana plugins directory (Grafana 12.0+).
-2. Unsigned builds need \`allow_loading_unsigned_plugins = augur-assistant-app,augur-claude-datasource\`.
+2. Unsigned builds need \`allow_loading_unsigned_plugins = ${APP_ID},${DS_ID}\`.
 3. Verify downloads with \`sha256sum -c SHA256SUMS\` and, optionally, \`gh attestation verify <zip> --repo AniAIApps/augur\`.
 MD

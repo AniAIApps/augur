@@ -11,6 +11,7 @@ plugins:
 
 grafana.ini:
   plugins:
+    # Not needed for a privately signed build (see Plugin signing)
     allow_loading_unsigned_plugins: augur-assistant-app,augur-claude-datasource
   navigation.app_sections:
     augur-assistant-app: root -3450

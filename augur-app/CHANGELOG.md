@@ -9,6 +9,7 @@
   - Headless: `AUGUR_EVIDENCE=<file>` writes a run's ledger; `augur-headless --verify <file>` re-runs it (exit code 3 if anything changed or is unavailable; `AUGUR_VERIFICATION` writes the result).
   - E2E: the ledger of a real run against Prometheus, Loki and Tempo is replayed and must reproduce every data digest.
 - Markdown reports say "with Augur in Grafana" (provider-neutral).
+- **Private signing for your organisation.** Grafana signs a plugin only for the Grafana Cloud account whose slug starts its ID, so `scripts/set-plugin-ids.sh <slug>` renames both plugins to `<slug>-augur-app` and `<slug>-augur-datasource` before building (and clears build caches). The release workflow does this when `GRAFANA_PLUGIN_ID_PREFIX` is set; packaging and release notes follow the plugin IDs. New docs: corrected *Plugin signing* and *Using Augur in your organisation*.
 - **No more silently dropped messages.** Every message now ends visibly: an answer, an error in the conversation, or a note that it was stopped.
   - A failure before the model was called (the browser refusing the run lock, an error building the prompt or tools) used to leave the conversation stuck as running, so later messages were dropped without a word. It is now shown as an error and the conversation is released.
   - Responses that aren't model responses (an HTML page from a proxy, an error object returned with HTTP 200) are reported instead of being treated as an empty answer.
