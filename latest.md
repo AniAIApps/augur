@@ -1,5 +1,5 @@
-# E2E 97ce7ab (2026-11-15T11:15:39Z)
-run: https://github.com/AniAIApps/augur/actions/runs/43706792931
+# E2E 03cc399 (2026-11-15T21:28:36Z)
+run: https://github.com/AniAIApps/augur/actions/runs/43762318784
 e2e: success
 loop-control: success
 
@@ -10,11 +10,11 @@ loop-control: success
 ✓ list_datasources (0ms, 161 chars)
 → query_loki {"datasource_uid":"loki","expr":"{service=\"payment-service\"} |= \"error\"","limit":20}
 → search_traces {"datasource_uid":"tempo","traceql":"{ status = error }","limit":5}
-✓ query_prometheus (24ms, 1365 chars)
-✓ query_loki (29ms, 933 chars)
-✓ search_traces (29ms, 702 chars)
-✓ query_loki (31ms, 985 chars)
-✓ draft_dashboard (23ms, 595 chars)
+✓ query_prometheus (22ms, 1365 chars)
+✓ query_loki (23ms, 985 chars)
+✓ search_traces (26ms, 702 chars)
+✓ query_loki (27ms, 933 chars)
+✓ draft_dashboard (22ms, 595 chars)
 ✓ headless run exits 0 (got 0, 0.2s)
 ✓ model requests well-formed
 ✓ run reached the final answer
@@ -31,7 +31,7 @@ loop-control: success
 ✓ Loki metric query returned level series
 ✓ Loki log query returned error lines
 ✓ Tempo search returned trace ids
-✓ dashboard proposal applied ([{"kind":"dashboard","message":"Saved dashboard \"Augur e2e: service overview\"","url":"/d/cl-j0qjj1swypn/augur-e2e3a-service-overview"}])
+✓ dashboard proposal applied ([{"kind":"dashboard","message":"Saved dashboard \"Augur e2e: service overview\"","url":"/d/cl-a95jcwfeutv/augur-e2e3a-service-overview"}])
 ✓ evidence ledger has ≥3 entries (6)
 ✓ ledger written with data digests (6 entries)
 ✓ evidence verification reproduces every query (prometheus, loki, tempo): {"identical":6,"changed":0,"unavailable":0,"inconclusive":0}
@@ -42,11 +42,11 @@ All checks passed
 ✓ list_datasources (0ms, 161 chars)
 → query_loki {"datasource_uid":"loki","expr":"{service=\"payment-service\"} |= \"error\"","limit":20}
 → search_traces {"datasource_uid":"tempo","traceql":"{ status = error }","limit":5}
-✓ query_prometheus (20ms, 1365 chars)
-✓ search_traces (23ms, 702 chars)
-✓ query_loki (35ms, 933 chars)
-✓ query_loki (35ms, 985 chars)
-✓ draft_dashboard (19ms, 595 chars)
+✓ query_prometheus (15ms, 1365 chars)
+✓ search_traces (17ms, 702 chars)
+✓ query_loki (28ms, 933 chars)
+✓ query_loki (29ms, 985 chars)
+✓ draft_dashboard (25ms, 595 chars)
 ✓ headless run exits 0 (got 0, 0.2s)
 ✓ model requests well-formed
 ✓ run reached the final answer
@@ -63,7 +63,7 @@ All checks passed
 ✓ Loki metric query returned level series
 ✓ Loki log query returned error lines
 ✓ Tempo search returned trace ids
-✓ dashboard proposal applied ([{"kind":"dashboard","message":"Saved dashboard \"Augur e2e: service overview\"","url":"/d/cl-zifuimln5sx/augur-e2e3a-service-overview"}])
+✓ dashboard proposal applied ([{"kind":"dashboard","message":"Saved dashboard \"Augur e2e: service overview\"","url":"/d/cl-qcauil3ls71/augur-e2e3a-service-overview"}])
 ✓ evidence ledger has ≥3 entries (6)
 ✓ ledger written with data digests (6 entries)
 ✓ evidence verification reproduces every query (prometheus, tempo, loki): {"identical":6,"changed":0,"unavailable":0,"inconclusive":0}
@@ -86,7 +86,7 @@ All checks passed
 ✓ [run 2/5] no tool or gateway errors shown
 ✓ [run 2/5] transcript scrolls in its own pane, composer visible ({"overflow":"auto","scrolls":true,"composerVisible":true})
 ✓ [run 2/5] dashboard draft card shown (not applied without a click)
-✓ [run 2/5] draft preview renders both panels ({"cells":2,"alerts":0,"canvases":0})
+✓ [run 2/5] draft preview renders both panels ({"cells":2,"alerts":0,"canvases":1})
 ✓ [run 2/5] draft preview panels render without errors
 ✓ [run 2/5] no page errors
 ✓ [run 3/5] Augur app page renders with the composer
