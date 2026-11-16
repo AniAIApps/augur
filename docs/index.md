@@ -7,6 +7,8 @@ hide:
 
 **The self-hosted AI assistant for Grafana: your model, your network, no Grafana Cloud.**
 
+*Inspired by [Grafana Assistant](https://grafana.com/docs/grafana-cloud/platform/grafana-assistant/), built for the open-source community: an independent project for teams running Grafana themselves. Not affiliated with or endorsed by Grafana Labs.*
+
 Augur adds an AI observability engineer to self-hosted Grafana (OSS or Enterprise, **12.0+**). It runs inside your Grafana and talks only to the model endpoint you choose: LiteLLM, the Anthropic API, Bedrock behind a gateway, or an OpenAI-compatible endpoint. There's no Grafana Cloud account, no third-party backend and no per-seat fee.
 
 ![Augur investigating a checkout latency incident: specialist sub-agents, hypothesis board and findings](img/augur-investigation.gif)

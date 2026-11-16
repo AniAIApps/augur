@@ -2,6 +2,8 @@
 
 **The self-hosted AI assistant for Grafana: your model, your network, no Grafana Cloud.**
 
+*Inspired by [Grafana Assistant](https://grafana.com/docs/grafana-cloud/platform/grafana-assistant/), built for the open-source community: an independent project for teams running Grafana themselves. Not affiliated with or endorsed by Grafana Labs.*
+
 Augur adds a Claude-powered observability engineer to self-hosted Grafana (OSS or Enterprise, **12.0+**). It runs entirely inside your Grafana and talks only to the model gateway you choose (LiteLLM, Bedrock behind a gateway, or the Anthropic API). There is no Grafana Cloud account, no third-party backend and no per-seat fee. It is docked on every page and can:
 
 - **Chat** about your metrics, logs, traces, profiles, dashboards and alerts, with an Explore link behind every claim.
