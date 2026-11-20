@@ -1,5 +1,5 @@
-# E2E bfe9f2d (2026-11-16T23:54:09Z)
-run: https://github.com/AniAIApps/augur/actions/runs/43981024371
+# E2E 0070b88 (2026-11-20T01:52:44Z)
+run: https://github.com/AniAIApps/augur/actions/runs/44655003511
 e2e: success
 loop-control: success
 
@@ -10,11 +10,11 @@ loop-control: success
 ✓ list_datasources (0ms, 161 chars)
 → query_loki {"datasource_uid":"loki","expr":"{service=\"payment-service\"} |= \"error\"","limit":20}
 → search_traces {"datasource_uid":"tempo","traceql":"{ status = error }","limit":5}
-✓ query_prometheus (26ms, 1365 chars)
-✓ search_traces (26ms, 702 chars)
-✓ query_loki (32ms, 933 chars)
-✓ query_loki (33ms, 985 chars)
-✓ draft_dashboard (22ms, 595 chars)
+✓ query_prometheus (29ms, 1365 chars)
+✓ search_traces (35ms, 702 chars)
+✓ query_loki (35ms, 985 chars)
+✓ query_loki (37ms, 933 chars)
+✓ draft_dashboard (24ms, 595 chars)
 ✓ headless run exits 0 (got 0, 0.2s)
 ✓ model requests well-formed
 ✓ run reached the final answer
@@ -31,7 +31,7 @@ loop-control: success
 ✓ Loki metric query returned level series
 ✓ Loki log query returned error lines
 ✓ Tempo search returned trace ids
-✓ dashboard proposal applied ([{"kind":"dashboard","message":"Saved dashboard \"Augur e2e: service overview\"","url":"/d/cl-a4hsq9ceo6v/augur-e2e3a-service-overview"}])
+✓ dashboard proposal applied ([{"kind":"dashboard","message":"Saved dashboard \"Augur e2e: service overview\"","url":"/d/cl-g9nvkncc4wp/augur-e2e3a-service-overview"}])
 ✓ evidence ledger has ≥3 entries (6)
 ✓ ledger written with data digests (6 entries)
 ✓ evidence verification reproduces every query (prometheus, tempo, loki): {"identical":6,"changed":0,"unavailable":0,"inconclusive":0}
@@ -39,14 +39,14 @@ loop-control: success
 ✓ dashboard panels have datasources and targets
 ✓ Loki deployment annotation saved
 All checks passed
-✓ list_datasources (0ms, 161 chars)
+✓ list_datasources (1ms, 161 chars)
 → query_loki {"datasource_uid":"loki","expr":"{service=\"payment-service\"} |= \"error\"","limit":20}
 → search_traces {"datasource_uid":"tempo","traceql":"{ status = error }","limit":5}
-✓ query_prometheus (17ms, 1365 chars)
-✓ search_traces (22ms, 702 chars)
-✓ query_loki (24ms, 933 chars)
-✓ query_loki (24ms, 985 chars)
-✓ draft_dashboard (20ms, 595 chars)
+✓ query_prometheus (26ms, 1365 chars)
+✓ search_traces (25ms, 702 chars)
+✓ query_loki (28ms, 933 chars)
+✓ query_loki (29ms, 985 chars)
+✓ draft_dashboard (27ms, 595 chars)
 ✓ headless run exits 0 (got 0, 0.2s)
 ✓ model requests well-formed
 ✓ run reached the final answer
@@ -63,7 +63,7 @@ All checks passed
 ✓ Loki metric query returned level series
 ✓ Loki log query returned error lines
 ✓ Tempo search returned trace ids
-✓ dashboard proposal applied ([{"kind":"dashboard","message":"Saved dashboard \"Augur e2e: service overview\"","url":"/d/cl-sj6l2npss5x/augur-e2e3a-service-overview"}])
+✓ dashboard proposal applied ([{"kind":"dashboard","message":"Saved dashboard \"Augur e2e: service overview\"","url":"/d/cl-6tpg3kccsqa/augur-e2e3a-service-overview"}])
 ✓ evidence ledger has ≥3 entries (6)
 ✓ ledger written with data digests (6 entries)
 ✓ evidence verification reproduces every query (prometheus, tempo, loki): {"identical":6,"changed":0,"unavailable":0,"inconclusive":0}
@@ -77,7 +77,7 @@ All checks passed
 ✓ [run 1/5] no tool or gateway errors shown
 ✓ [run 1/5] transcript scrolls in its own pane, composer visible ({"overflow":"auto","scrolls":true,"composerVisible":true})
 ✓ [run 1/5] dashboard draft card shown (not applied without a click)
-✓ [run 1/5] draft preview renders both panels ({"cells":2,"alerts":0,"canvases":0})
+✓ [run 1/5] draft preview renders both panels ({"cells":2,"alerts":0,"canvases":1})
 ✓ [run 1/5] draft preview panels render without errors
 ✓ [run 1/5] no page errors
 ✓ [run 2/5] Augur app page renders with the composer
@@ -104,7 +104,7 @@ All checks passed
 ✓ [run 4/5] no tool or gateway errors shown
 ✓ [run 4/5] transcript scrolls in its own pane, composer visible ({"overflow":"auto","scrolls":true,"composerVisible":true})
 ✓ [run 4/5] dashboard draft card shown (not applied without a click)
-✓ [run 4/5] draft preview renders both panels ({"cells":2,"alerts":0,"canvases":1})
+✓ [run 4/5] draft preview renders both panels ({"cells":2,"alerts":0,"canvases":0})
 ✓ [run 4/5] draft preview panels render without errors
 ✓ [run 4/5] no page errors
 ✓ [run 5/5] Augur app page renders with the composer
@@ -113,7 +113,7 @@ All checks passed
 ✓ [run 5/5] no tool or gateway errors shown
 ✓ [run 5/5] transcript scrolls in its own pane, composer visible ({"overflow":"auto","scrolls":true,"composerVisible":true})
 ✓ [run 5/5] dashboard draft card shown (not applied without a click)
-✓ [run 5/5] draft preview renders both panels ({"cells":2,"alerts":0,"canvases":0})
+✓ [run 5/5] draft preview renders both panels ({"cells":2,"alerts":0,"canvases":1})
 ✓ [run 5/5] draft preview panels render without errors
 ✓ [run 5/5] no page errors
 All UI checks passed (5 runs)
